@@ -22,7 +22,7 @@ public struct GWClient: Sendable {
     private let transport: GWTransporting
 
     public init(
-        baseURL: URL = URL(string: "https://gw.evar.co.kr")!,
+        baseURL: URL = URL(string: "https://gw.example.com")!,
         credentialStore: GWCredentialProviding,
         transport: GWTransporting = URLSessionGWTransport()
     ) {

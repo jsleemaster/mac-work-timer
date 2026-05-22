@@ -4,7 +4,7 @@ import XCTest
 final class GWClientTests: XCTestCase {
     func testMissingCredentialsReturnsNotConfiguredWithoutNetwork() async throws {
         let client = GWClient(
-            baseURL: URL(string: "https://gw.evar.co.kr")!,
+            baseURL: URL(string: "https://gw.example.com")!,
             credentialStore: InMemoryCredentialStore(credentials: nil),
             transport: RecordingGWTransport()
         )
@@ -16,11 +16,11 @@ final class GWClientTests: XCTestCase {
 
     func testLoginPageWithSecondCertFallsBackToWebLogin() async throws {
         let transport = RecordingGWTransport(responses: [
-            (HTTPURLResponse.fixture(url: "https://gw.evar.co.kr/gw/uat/uia/egovLoginUsr.do", statusCode: 200), Data("<form action=\"/gw/uat/uia/actionLogin.do\"></form>".utf8)),
-            (HTTPURLResponse.fixture(url: "https://gw.evar.co.kr/gw/uat/uia/actionLogin.do", statusCode: 200), Data("<div class=\"secondCert\">이차인증</div>".utf8))
+            (HTTPURLResponse.fixture(url: "https://gw.example.com/gw/uat/uia/egovLoginUsr.do", statusCode: 200), Data("<form action=\"/gw/uat/uia/actionLogin.do\"></form>".utf8)),
+            (HTTPURLResponse.fixture(url: "https://gw.example.com/gw/uat/uia/actionLogin.do", statusCode: 200), Data("<div class=\"secondCert\">이차인증</div>".utf8))
         ])
         let client = GWClient(
-            baseURL: URL(string: "https://gw.evar.co.kr")!,
+            baseURL: URL(string: "https://gw.example.com")!,
             credentialStore: InMemoryCredentialStore(credentials: GWCredentials(userID: "u", password: "p")),
             transport: transport
         )
@@ -33,12 +33,12 @@ final class GWClientTests: XCTestCase {
 
     func testPortalHtmlAttendanceRecordCreatesWorkSession() async throws {
         let transport = RecordingGWTransport(responses: [
-            (HTTPURLResponse.fixture(url: "https://gw.evar.co.kr/gw/uat/uia/egovLoginUsr.do", statusCode: 200), Data("<form action=\"/gw/uat/uia/actionLogin.do\"></form>".utf8)),
-            (HTTPURLResponse.fixture(url: "https://gw.evar.co.kr/gw/uat/uia/actionLogin.do", statusCode: 302), Data()),
-            (HTTPURLResponse.fixture(url: "https://gw.evar.co.kr/gw/userMain.do?isMain=Y", statusCode: 200), Data("<html><body>Leeo 출근 2026.05.19 09:25:07 퇴근</body></html>".utf8))
+            (HTTPURLResponse.fixture(url: "https://gw.example.com/gw/uat/uia/egovLoginUsr.do", statusCode: 200), Data("<form action=\"/gw/uat/uia/actionLogin.do\"></form>".utf8)),
+            (HTTPURLResponse.fixture(url: "https://gw.example.com/gw/uat/uia/actionLogin.do", statusCode: 302), Data()),
+            (HTTPURLResponse.fixture(url: "https://gw.example.com/gw/userMain.do?isMain=Y", statusCode: 200), Data("<html><body>User 출근 2026.05.19 09:25:07 퇴근</body></html>".utf8))
         ])
         let client = GWClient(
-            baseURL: URL(string: "https://gw.evar.co.kr")!,
+            baseURL: URL(string: "https://gw.example.com")!,
             credentialStore: InMemoryCredentialStore(credentials: GWCredentials(userID: "u", password: "p")),
             transport: transport
         )

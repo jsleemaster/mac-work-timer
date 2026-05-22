@@ -22,7 +22,7 @@ async function loadPlaywright() {
   }
 }
 
-const target = process.argv[2] ?? "https://gw.evar.co.kr/gw/bizbox.do";
+const target = process.argv[2] ?? "https://gw.example.com/gw/bizbox.do";
 const { chromium } = await loadPlaywright();
 const browser = await chromium.launch({ headless: true });
 const page = await browser.newPage();

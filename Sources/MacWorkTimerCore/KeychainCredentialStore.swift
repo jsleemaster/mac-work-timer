@@ -18,7 +18,7 @@ public final class KeychainCredentialStore: GWCredentialProviding, @unchecked Se
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
 
-    public init(service: String = "MacWorkTimer.GW", account: String = "gw.evar.co.kr") {
+    public init(service: String = "MacWorkTimer.GW", account: String = "gw.example.com") {
         self.service = service
         self.account = account
     }

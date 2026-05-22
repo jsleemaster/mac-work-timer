@@ -1,6 +1,6 @@
 # Mac Work Timer
 
-macOS menu bar app for tracking a 9-hour workday from the GW attendance check-in record. It is read-only toward EVAR GW/Bizbox: it never submits attendance records.
+macOS menu bar app for tracking a 9-hour workday from the GW attendance check-in record. It is read-only toward the configured GW/Bizbox server: it never submits attendance records.
 
 ## What it does
 
@@ -28,7 +28,7 @@ Read-only login-page inspection uses Playwright, matching the workspace rule for
 ```bash
 cd mac-work-timer
 npm exec --yes --package=playwright -- playwright install chromium
-npm exec --yes --package=playwright -- node scripts/inspect_gw_login.mjs
+npm exec --yes --package=playwright -- node scripts/inspect_gw_login.mjs https://gw.example.com/gw/bizbox.do
 ```
 
 Use this only to inspect forms, navigation, and read-only attendance pages. Do not call attendance write endpoints from this app.
