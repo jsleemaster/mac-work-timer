@@ -52,6 +52,15 @@ Optional custom images:
 
 If these images are missing, the app falls back to its built-in SwiftUI capsule and default pet frames.
 
+Local-only personal pet images can also be stored outside the repository at `~/MacWorkTimerLocalPets`:
+
+- `stage-1.png`
+- `stage-2.png`
+- `stage-3.png`
+- `sources.json`
+
+When all three PNG files exist, the app treats them as one local-only evolving pet and keeps those files out of GitHub and public release builds.
+
 ## GW inspection
 
 Read-only login-page inspection uses Playwright, matching the workspace rule for browser debugging:

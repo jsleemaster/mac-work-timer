@@ -123,6 +123,7 @@ struct WorkPetView: View {
                 let frame = PetAsset.petFrame(
                     petID: petID,
                     setName: visualState.frameSetName,
+                    stage: PetEvolutionStage.stage(mood: mood),
                     at: time,
                     duration: visualState.frameDuration
                 )
@@ -135,11 +136,20 @@ struct WorkPetView: View {
     private func petBody(image: NSImage?, petID: String, blink: Bool, time: TimeInterval) -> some View {
         ZStack {
             if let image {
-                Image(nsImage: image)
-                    .resizable()
-                    .interpolation(.high)
-                    .scaledToFit()
-                    .frame(width: 76, height: 82)
+                if petID == PetAsset.localEvolutionPetID {
+                    LocalEvolutionPetImage(
+                        image: image,
+                        stage: PetEvolutionStage.stage(mood: mood),
+                        blink: blink,
+                        time: time
+                    )
+                } else {
+                    Image(nsImage: image)
+                        .resizable()
+                        .interpolation(.high)
+                        .scaledToFit()
+                        .frame(width: 76, height: 82)
+                }
             } else if petID == PetAsset.builtInSpecterPetID {
                 SpecterPetBody(
                     stage: PetEvolutionStage.stage(mood: mood),
@@ -157,7 +167,8 @@ struct WorkPetView: View {
     }
 
     private func fallbackBlink(at time: TimeInterval) -> Bool {
-        mood == .done && sin(time * .pi) > 0.82
+        let periodicBlink = time.truncatingRemainder(dividingBy: 4.1) > 3.92
+        return periodicBlink || (mood == .done && sin(time * .pi) > 0.82)
     }
 
     private func fallbackPetBody(blink: Bool) -> some View {
@@ -490,6 +501,7 @@ private extension PetVisualState {
 
 private enum PetAsset {
     static let builtInSpecterPetID = "specter"
+    static let localEvolutionPetID = "local-evolution"
 
     static var availablePetIDs: [String] {
         availablePetIDsCache
@@ -511,9 +523,14 @@ private enum PetAsset {
     static func petFrame(
         petID: String,
         setName: String,
+        stage: PetEvolutionStage,
         at time: TimeInterval,
         duration: TimeInterval
     ) -> NSImage? {
+        if petID == localEvolutionPetID {
+            return localEvolutionImage(stage: stage)
+        }
+
         let requestedFrames = customPetFrames(petID: petID, setName: setName)
         let idleFrames = customPetFrames(petID: petID, setName: "idle")
         let resolvedFrames = requestedFrames.isEmpty ? idleFrames : requestedFrames
@@ -584,7 +601,7 @@ private enum PetAsset {
 
     private static let availablePetIDsCache: [String] = {
         guard let urls = Bundle.main.urls(forResourcesWithExtension: "png", subdirectory: "Images/PetFrames") else {
-            return [builtInSpecterPetID]
+            return localEvolutionAvailable ? [localEvolutionPetID, builtInSpecterPetID] : [builtInSpecterPetID]
         }
 
         let prefix = "pet-"
@@ -601,7 +618,8 @@ private enum PetAsset {
             .filter { !$0.isEmpty }
             .sorted()
 
-        return Array(Set([builtInSpecterPetID] + ids)).sorted()
+        let builtIns = localEvolutionAvailable ? [localEvolutionPetID, builtInSpecterPetID] : [builtInSpecterPetID]
+        return Array(Set(builtIns + ids)).sorted()
     }()
 
     private static let customPetFrameCache: [String: [NSImage]] = {
@@ -660,6 +678,32 @@ private enum PetAsset {
             ).flatMap(NSImage.init(contentsOf:))
         }
     }
+
+    private static var localEvolutionAvailable: Bool {
+        localEvolutionImageURLs.allSatisfy { FileManager.default.fileExists(atPath: $0.path) }
+    }
+
+    private static func localEvolutionImage(stage: PetEvolutionStage) -> NSImage? {
+        let url = switch stage {
+        case .base:
+            localEvolutionImageURLs[0]
+        case .middle:
+            localEvolutionImageURLs[1]
+        case .final:
+            localEvolutionImageURLs[2]
+        }
+
+        return NSImage(contentsOf: url)
+    }
+
+    private static let localEvolutionDirectory = FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent("MacWorkTimerLocalPets", isDirectory: true)
+
+    private static let localEvolutionImageURLs = [
+        localEvolutionDirectory.appendingPathComponent("stage-1.png"),
+        localEvolutionDirectory.appendingPathComponent("stage-2.png"),
+        localEvolutionDirectory.appendingPathComponent("stage-3.png")
+    ]
 
     private static let fallbackImage: NSImage? = Bundle.main.url(
         forResource: "work-pet",
@@ -857,6 +901,79 @@ private struct SpecterPetBody: View {
             .frame(width: stage == .final ? 78 : 68, height: stage == .final ? 78 : 68)
             .scaleEffect(1 + CGFloat(sin(time * 3.0)) * 0.025)
     }
+}
+
+private struct LocalEvolutionPetImage: View {
+    let image: NSImage
+    let stage: PetEvolutionStage
+    let blink: Bool
+    let time: TimeInterval
+
+    private var floatOffset: CGFloat {
+        CGFloat(sin(time * 2.2) * 1.8)
+    }
+
+    var body: some View {
+        ZStack {
+            Image(nsImage: image)
+                .resizable()
+                .interpolation(.high)
+                .scaledToFit()
+                .frame(width: 78, height: 84)
+
+            LocalPetBlinkOverlay(stage: stage)
+                .opacity(blink ? 1 : 0)
+                .animation(.smooth(duration: 0.08), value: blink)
+        }
+        .frame(width: 82, height: 88)
+        .offset(y: floatOffset)
+        .scaleEffect(stage == .final ? 1.02 : 0.98)
+    }
+}
+
+private struct LocalPetBlinkOverlay: View {
+    let stage: PetEvolutionStage
+
+    var body: some View {
+        ZStack {
+            ForEach(Array(eyes.enumerated()), id: \.offset) { _, eye in
+                Capsule(style: .continuous)
+                    .fill(eye.color)
+                    .frame(width: eye.size.width, height: eye.size.height)
+                    .rotationEffect(.degrees(eye.rotation))
+                    .position(eye.position)
+            }
+        }
+        .frame(width: 82, height: 88)
+        .allowsHitTesting(false)
+    }
+
+    private var eyes: [BlinkEye] {
+        switch stage {
+        case .base:
+            return [
+                BlinkEye(position: CGPoint(x: 29, y: 39), size: CGSize(width: 24, height: 13), rotation: -10, color: Color.black.opacity(0.96)),
+                BlinkEye(position: CGPoint(x: 52, y: 37), size: CGSize(width: 24, height: 13), rotation: 10, color: Color.black.opacity(0.96))
+            ]
+        case .middle:
+            return [
+                BlinkEye(position: CGPoint(x: 33, y: 30), size: CGSize(width: 21, height: 9), rotation: -7, color: Color(red: 0.32, green: 0.30, blue: 0.44).opacity(0.94)),
+                BlinkEye(position: CGPoint(x: 52, y: 32), size: CGSize(width: 22, height: 9), rotation: 5, color: Color(red: 0.32, green: 0.30, blue: 0.44).opacity(0.94))
+            ]
+        case .final:
+            return [
+                BlinkEye(position: CGPoint(x: 30, y: 31), size: CGSize(width: 24, height: 10), rotation: 11, color: Color(red: 0.30, green: 0.25, blue: 0.48).opacity(0.96)),
+                BlinkEye(position: CGPoint(x: 54, y: 31), size: CGSize(width: 24, height: 10), rotation: -11, color: Color(red: 0.30, green: 0.25, blue: 0.48).opacity(0.96))
+            ]
+        }
+    }
+}
+
+private struct BlinkEye {
+    let position: CGPoint
+    let size: CGSize
+    let rotation: Double
+    let color: Color
 }
 
 private struct SpecterFace: View {

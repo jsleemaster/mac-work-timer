@@ -1,4 +1,5 @@
 import AppKit
+import MacWorkTimerCore
 import SwiftUI
 
 @MainActor
@@ -58,31 +59,21 @@ final class PetWindowController {
     }
 
     private func defaultFrame() -> NSRect {
-        let mouseLocation = NSEvent.mouseLocation
-        let visibleFrame = placementVisibleFrame(for: mouseLocation)
-        let x = min(
-            max(mouseLocation.x + 18, visibleFrame.minX + 8),
-            visibleFrame.maxX - size.width - 8
-        )
-        let y = min(
-            max(mouseLocation.y - size.height - 18, visibleFrame.minY + 8),
-            visibleFrame.maxY - size.height - 8
+        let frame = FloatingPanelPlacement.bottomRightFrame(
+            visibleFrame: placementVisibleFrame(),
+            panelSize: size
         )
 
         return NSRect(
-            x: x,
-            y: y,
-            width: size.width,
-            height: size.height
+            x: frame.minX,
+            y: frame.minY,
+            width: frame.width,
+            height: frame.height
         )
     }
 
-    private func placementVisibleFrame(for mouseLocation: NSPoint) -> NSRect {
-        if let screen = NSScreen.screens.first(where: { $0.frame.contains(mouseLocation) }) {
-            return screen.visibleFrame
-        }
-
-        return (NSScreen.main ?? NSScreen.screens.first)?.visibleFrame
+    private func placementVisibleFrame() -> NSRect {
+        (NSScreen.main ?? NSScreen.screens.first)?.visibleFrame
             ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
     }
 }
