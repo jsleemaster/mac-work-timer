@@ -6,6 +6,8 @@ struct WorkPetView: View {
     @EnvironmentObject private var model: AppModel
     @State private var dragState: PetDragState = .idle
     @State private var temporaryMessage: String?
+    @State private var capsulePhase: CapsuleRevealPhase = .idle
+    @State private var capsulePhaseStartedAt = Date()
 
     private var mood: PetMood {
         PetMood.mood(remaining: model.remaining)
@@ -21,24 +23,52 @@ struct WorkPetView: View {
         )
     }
 
+    private var revealDisplay: PetRevealDisplay {
+        model.petRevealDisplay(availablePetIDs: PetAsset.availablePetIDs)
+    }
+
+    private var labelText: String {
+        if case .capsuleIdle = revealDisplay {
+            return capsulePhase == .idle ? "출근 완료" : "누가 나올까"
+        }
+
+        return visualState.label
+    }
+
+    private var labelTextColor: Color {
+        if case .capsuleIdle = revealDisplay {
+            return Color(red: 0.18, green: 0.20, blue: 0.22).opacity(0.78)
+        }
+
+        return visualState.textColor
+    }
+
+    private var labelGlassTint: Color {
+        if case .capsuleIdle = revealDisplay {
+            return Color(red: 0.72, green: 0.88, blue: 0.86).opacity(0.26)
+        }
+
+        return visualState.glassTint
+    }
+
     var body: some View {
         ZStack(alignment: .top) {
-            Text(visualState.label)
+            Text(labelText)
                 .font(.system(size: 10, weight: .semibold, design: .rounded))
-                .foregroundStyle(visualState.textColor)
+                .foregroundStyle(labelTextColor)
                 .lineLimit(1)
                 .minimumScaleFactor(0.72)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 5)
                 .liquidGlass(
                     in: Capsule(style: .continuous),
-                    tint: visualState.glassTint,
+                    tint: labelGlassTint,
                     interactive: true
                 )
                 .frame(maxWidth: 104)
                 .transition(.scale(scale: 0.92).combined(with: .opacity))
                 .offset(y: 2)
-                .animation(.smooth(duration: 0.18), value: visualState.label)
+                .animation(.smooth(duration: 0.18), value: labelText)
 
             spritePetBody
         }
@@ -52,7 +82,7 @@ struct WorkPetView: View {
                     }
                 },
                 onClick: {
-                    showCurrentMessage()
+                    handleClick()
                 }
             )
         }
@@ -70,14 +100,35 @@ struct WorkPetView: View {
     private var spritePetBody: some View {
         TimelineView(.animation) { timeline in
             let time = timeline.date.timeIntervalSinceReferenceDate
-            let frame = PetAsset.frame(
-                setName: visualState.frameSetName,
-                at: time,
-                duration: visualState.frameDuration
-            )
+            let capsuleElapsed = timeline.date.timeIntervalSince(capsulePhaseStartedAt)
 
-            petBody(image: frame, blink: fallbackBlink(at: time))
+            switch revealDisplay {
+            case .idle:
+                let frame = PetAsset.frame(
+                    setName: visualState.frameSetName,
+                    at: time,
+                    duration: visualState.frameDuration
+                )
+                petBody(image: frame, blink: fallbackBlink(at: time))
+                    .offset(y: 31)
+            case .capsuleIdle:
+                capsuleBody(
+                    image: PetAsset.capsuleFrame(phase: capsulePhase, at: time),
+                    phase: capsulePhase,
+                    time: time,
+                    elapsed: capsuleElapsed
+                )
                 .offset(y: 31)
+            case .petVisible(let petID):
+                let frame = PetAsset.petFrame(
+                    petID: petID,
+                    setName: visualState.frameSetName,
+                    at: time,
+                    duration: visualState.frameDuration
+                )
+                petBody(image: frame, blink: fallbackBlink(at: time))
+                    .offset(y: 31)
+            }
         }
     }
 
@@ -140,10 +191,269 @@ struct WorkPetView: View {
             }
     }
 
+    private func capsuleBody(
+        image: NSImage?,
+        phase: CapsuleRevealPhase,
+        time: TimeInterval,
+        elapsed: TimeInterval
+    ) -> some View {
+        ZStack {
+            if let image {
+                Image(nsImage: image)
+                    .resizable()
+                    .interpolation(.high)
+                    .scaledToFit()
+                    .frame(width: 76, height: 82)
+                    .modifier(CapsuleImageMotion(phase: phase, elapsed: elapsed))
+            } else {
+                CapsuleBallFallback(phase: phase, time: time, elapsed: elapsed)
+            }
+        }
+    }
+
+    private func handleClick() {
+        if case .capsuleIdle = revealDisplay {
+            revealCapsule()
+        } else {
+            showCurrentMessage()
+        }
+    }
+
+    private func revealCapsule() {
+        guard capsulePhase == .idle else {
+            return
+        }
+
+        Task { @MainActor in
+            withAnimation(.smooth(duration: 0.12)) {
+                temporaryMessage = nil
+                capsulePhaseStartedAt = Date()
+                capsulePhase = .shaking
+            }
+
+            try? await Task.sleep(for: .milliseconds(760))
+
+            withAnimation(.smooth(duration: 0.18)) {
+                capsulePhaseStartedAt = Date()
+                capsulePhase = .opening
+            }
+
+            try? await Task.sleep(for: .milliseconds(760))
+
+            model.completePetReveal(availablePetIDs: PetAsset.availablePetIDs)
+            withAnimation(.smooth(duration: 0.20)) {
+                capsulePhase = .idle
+                capsulePhaseStartedAt = Date()
+            }
+        }
+    }
+
     private func showCurrentMessage() {
         withAnimation(.smooth(duration: 0.22)) {
             temporaryMessage = PetVisualState.clickMessage(remaining: model.remaining, elapsed: model.elapsed)
         }
+    }
+}
+
+private enum CapsuleRevealPhase: Equatable {
+    case idle
+    case shaking
+    case opening
+
+    var frameSetName: String {
+        switch self {
+        case .idle:
+            return "capsule-idle"
+        case .shaking:
+            return "capsule-shake"
+        case .opening:
+            return "capsule-open"
+        }
+    }
+
+    var frameCount: Int {
+        switch self {
+        case .idle:
+            return 6
+        case .shaking, .opening:
+            return 8
+        }
+    }
+
+    var frameDuration: TimeInterval {
+        switch self {
+        case .idle:
+            return 0.22
+        case .shaking:
+            return 0.08
+        case .opening:
+            return 0.09
+        }
+    }
+}
+
+private struct CapsuleImageMotion: ViewModifier {
+    let phase: CapsuleRevealPhase
+    let elapsed: TimeInterval
+
+    func body(content: Content) -> some View {
+        let wobble = phase == .shaking ? sin(elapsed * 38) * 14 : 0
+        let xOffset = phase == .shaking ? sin(elapsed * 38) * 3 : 0
+        let scale = phase == .opening ? 1.04 : 1
+
+        content
+            .rotationEffect(.degrees(wobble))
+            .offset(x: xOffset)
+            .scaleEffect(scale)
+    }
+}
+
+private struct CapsuleBallFallback: View {
+    let phase: CapsuleRevealPhase
+    let time: TimeInterval
+    let elapsed: TimeInterval
+
+    private var openingProgress: CGFloat {
+        phase == .opening ? min(1, max(0, elapsed / 0.66)) : 0
+    }
+
+    private var wobble: Double {
+        switch phase {
+        case .idle:
+            return sin(time * 2.8) * 1.6
+        case .shaking:
+            return sin(elapsed * 38) * 14
+        case .opening:
+            return 0
+        }
+    }
+
+    private var xOffset: CGFloat {
+        phase == .shaking ? CGFloat(sin(elapsed * 38) * 3) : 0
+    }
+
+    var body: some View {
+        ZStack {
+            if phase == .opening {
+                openedBall
+            } else {
+                closedBall
+            }
+        }
+        .frame(width: 76, height: 82)
+        .rotationEffect(.degrees(wobble))
+        .offset(x: xOffset)
+    }
+
+    private var openedBall: some View {
+        ZStack {
+            closedBall
+                .clipShape(HalfClip(top: true))
+                .offset(y: -18 * openingProgress)
+                .rotationEffect(.degrees(-7 * Double(openingProgress)))
+
+            Circle()
+                .fill(
+                    RadialGradient(
+                        colors: [
+                            Color(red: 0.72, green: 0.98, blue: 0.93).opacity(0.62),
+                            .clear
+                        ],
+                        center: .center,
+                        startRadius: 2,
+                        endRadius: 34
+                    )
+                )
+                .frame(width: 62, height: 62)
+                .scaleEffect(0.74 + openingProgress * 0.28)
+                .opacity(openingProgress)
+
+            closedBall
+                .clipShape(HalfClip(top: false))
+                .offset(y: 9 * openingProgress)
+                .rotationEffect(.degrees(3 * Double(openingProgress)))
+        }
+    }
+
+    private var closedBall: some View {
+        ZStack {
+            Circle()
+                .fill(Color(red: 0.95, green: 0.96, blue: 0.92))
+
+            CapsuleBallUpperShape()
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color(red: 0.18, green: 0.76, blue: 0.72),
+                            Color(red: 0.51, green: 0.91, blue: 0.78)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .fill(Color(red: 0.28, green: 0.32, blue: 0.33))
+                .frame(width: 72, height: 12)
+                .rotationEffect(.degrees(-6))
+                .offset(y: 2)
+
+            Circle()
+                .fill(Color(red: 0.30, green: 0.35, blue: 0.35))
+                .frame(width: 30, height: 30)
+                .overlay {
+                    Circle()
+                        .fill(.white.opacity(0.94))
+                        .frame(width: 19, height: 19)
+                }
+                .overlay {
+                    Circle()
+                        .stroke(Color.black.opacity(0.18), lineWidth: 2)
+                        .frame(width: 21, height: 21)
+                }
+
+            Ellipse()
+                .fill(.white.opacity(0.62))
+                .frame(width: 20, height: 11)
+                .rotationEffect(.degrees(-28))
+                .offset(x: -17, y: -19)
+        }
+        .frame(width: 68, height: 68)
+        .clipShape(Circle())
+        .overlay {
+            Circle()
+                .stroke(Color(red: 0.16, green: 0.18, blue: 0.18).opacity(0.72), lineWidth: 2)
+                .frame(width: 68, height: 68)
+        }
+    }
+}
+
+private struct CapsuleBallUpperShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: rect.minX, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.midY + 5))
+        path.addQuadCurve(
+            to: CGPoint(x: rect.minX, y: rect.midY + 8),
+            control: CGPoint(x: rect.midX, y: rect.midY - 13)
+        )
+        path.closeSubpath()
+        return path
+    }
+}
+
+private struct HalfClip: Shape {
+    let top: Bool
+
+    func path(in rect: CGRect) -> Path {
+        let half = CGRect(
+            x: rect.minX,
+            y: top ? rect.minY : rect.midY,
+            width: rect.width,
+            height: rect.height / 2
+        )
+        return Path(half)
     }
 }
 
@@ -172,6 +482,10 @@ private extension PetVisualState {
 }
 
 private enum PetAsset {
+    static var availablePetIDs: [String] {
+        availablePetIDsCache
+    }
+
     static func frame(setName: String, at time: TimeInterval, duration: TimeInterval) -> NSImage? {
         let requestedFrames = frames(named: setName)
         let resolvedFrames = requestedFrames.isEmpty ? frames(named: "idle") : requestedFrames
@@ -185,8 +499,54 @@ private enum PetAsset {
         return resolvedFrames[frameIndex]
     }
 
+    static func petFrame(
+        petID: String,
+        setName: String,
+        at time: TimeInterval,
+        duration: TimeInterval
+    ) -> NSImage? {
+        guard petID != PetRevealState.defaultPetID else {
+            return frame(setName: setName, at: time, duration: duration)
+        }
+
+        let requestedFrames = customPetFrames(petID: petID, setName: setName)
+        let idleFrames = customPetFrames(petID: petID, setName: "idle")
+        let resolvedFrames = requestedFrames.isEmpty ? idleFrames : requestedFrames
+
+        guard !resolvedFrames.isEmpty else {
+            return frame(setName: setName, at: time, duration: duration)
+        }
+
+        let frameDuration = max(0.05, duration)
+        let frameIndex = Int((time / frameDuration).rounded(.down)) % resolvedFrames.count
+        return resolvedFrames[frameIndex]
+    }
+
+    static func capsuleFrame(phase: CapsuleRevealPhase, at time: TimeInterval) -> NSImage? {
+        let frames = capsuleFrames(named: phase.frameSetName)
+        if !frames.isEmpty {
+            let frameIndex = Int((time / phase.frameDuration).rounded(.down)) % frames.count
+            return frames[frameIndex]
+        }
+
+        switch phase {
+        case .idle, .shaking:
+            return capsuleClosedImage
+        case .opening:
+            return capsuleOpenImage ?? capsuleClosedImage
+        }
+    }
+
     private static func frames(named setName: String) -> [NSImage] {
         cachedFrames[setName] ?? []
+    }
+
+    private static func customPetFrames(petID: String, setName: String) -> [NSImage] {
+        customPetFrameCache["\(petID)-\(setName)"] ?? []
+    }
+
+    private static func capsuleFrames(named setName: String) -> [NSImage] {
+        capsuleFrameCache[setName] ?? []
     }
 
     private static let cachedFrames: [String: [NSImage]] = {
@@ -209,6 +569,60 @@ private enum PetAsset {
         })
     }()
 
+    private static let availablePetIDsCache: [String] = {
+        guard let urls = Bundle.main.urls(forResourcesWithExtension: "png", subdirectory: "Images/PetFrames") else {
+            return [PetRevealState.defaultPetID]
+        }
+
+        let prefix = "pet-"
+        let suffix = "-idle-0.png"
+        let ids = urls
+            .map(\.lastPathComponent)
+            .compactMap { fileName -> String? in
+                guard fileName.hasPrefix(prefix), fileName.hasSuffix(suffix) else {
+                    return nil
+                }
+
+                return String(fileName.dropFirst(prefix.count).dropLast(suffix.count))
+            }
+            .filter { !$0.isEmpty }
+            .sorted()
+
+        return ids.isEmpty ? [PetRevealState.defaultPetID] : ids
+    }()
+
+    private static let customPetFrameCache: [String: [NSImage]] = {
+        let petIDs = availablePetIDsCache.filter { $0 != PetRevealState.defaultPetID }
+        let setNames = [
+            "idle",
+            "working",
+            "working-afternoon",
+            "working-late",
+            "under1h",
+            "under30m",
+            "under5m",
+            "done",
+            "appear",
+            "drag",
+            "drag-left",
+            "drag-right"
+        ]
+
+        var cache: [String: [NSImage]] = [:]
+        for petID in petIDs {
+            for setName in setNames {
+                cache["\(petID)-\(setName)"] = loadCustomPetFrames(petID: petID, setName: setName)
+            }
+        }
+        return cache
+    }()
+
+    private static let capsuleFrameCache: [String: [NSImage]] = [
+        "capsule-idle": loadResourceFrames(prefix: "capsule-idle", count: 6),
+        "capsule-shake": loadResourceFrames(prefix: "capsule-shake", count: 8),
+        "capsule-open": loadResourceFrames(prefix: "capsule-open", count: 8)
+    ]
+
     private static func loadFrames(named setName: String) -> [NSImage] {
         (0..<6).compactMap { index in
             Bundle.main.url(
@@ -219,8 +633,34 @@ private enum PetAsset {
         }
     }
 
+    private static func loadCustomPetFrames(petID: String, setName: String) -> [NSImage] {
+        loadResourceFrames(prefix: "pet-\(petID)-\(setName)", count: 6)
+    }
+
+    private static func loadResourceFrames(prefix: String, count: Int) -> [NSImage] {
+        (0..<count).compactMap { index in
+            Bundle.main.url(
+                forResource: "\(prefix)-\(index)",
+                withExtension: "png",
+                subdirectory: "Images/PetFrames"
+            ).flatMap(NSImage.init(contentsOf:))
+        }
+    }
+
     private static let fallbackImage: NSImage? = Bundle.main.url(
         forResource: "work-pet",
+        withExtension: "png",
+        subdirectory: "Images"
+    ).flatMap(NSImage.init(contentsOf:))
+
+    private static let capsuleClosedImage: NSImage? = Bundle.main.url(
+        forResource: "capsule-closed",
+        withExtension: "png",
+        subdirectory: "Images"
+    ).flatMap(NSImage.init(contentsOf:))
+
+    private static let capsuleOpenImage: NSImage? = Bundle.main.url(
+        forResource: "capsule-open",
         withExtension: "png",
         subdirectory: "Images"
     ).flatMap(NSImage.init(contentsOf:))

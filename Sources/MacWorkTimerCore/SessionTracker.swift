@@ -52,4 +52,16 @@ public final class SessionTracker {
         try store.save(state)
         return state
     }
+
+    @discardableResult
+    public func completePetReveal(
+        for workDate: String,
+        availablePetIDs: [String],
+        picker: ([String]) -> String? = { $0.randomElement() }
+    ) throws -> AppState {
+        var state = try store.load()
+        state.completePetReveal(for: workDate, availablePetIDs: availablePetIDs, picker: picker)
+        try store.save(state)
+        return state
+    }
 }

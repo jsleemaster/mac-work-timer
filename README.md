@@ -37,6 +37,21 @@ Recommended release path:
 4. Upload the zip as the release asset.
 5. For broader distribution, add Developer ID signing and Apple notarization before publishing the release.
 
+## Pet assets
+
+The floating pet supports a daily capsule reveal. Keep all public assets original; do not ship trademarked ball designs, official characters, or copied game artwork.
+
+Optional custom images:
+
+- `Resources/Images/capsule-closed.png`: closed capsule reference, transparent PNG.
+- `Resources/Images/capsule-open.png`: open capsule reference, transparent PNG.
+- `Resources/Images/PetFrames/capsule-idle-0.png` ... `capsule-idle-5.png`: closed idle animation.
+- `Resources/Images/PetFrames/capsule-shake-0.png` ... `capsule-shake-7.png`: shake animation.
+- `Resources/Images/PetFrames/capsule-open-0.png` ... `capsule-open-7.png`: opening animation.
+- `Resources/Images/PetFrames/pet-<id>-idle-0.png` ... `pet-<id>-idle-5.png`: registered pet idle frames.
+
+If these images are missing, the app falls back to its built-in SwiftUI capsule and default pet frames.
+
 ## GW inspection
 
 Read-only login-page inspection uses Playwright, matching the workspace rule for browser debugging:

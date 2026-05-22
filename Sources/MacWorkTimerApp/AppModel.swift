@@ -79,6 +79,23 @@ final class AppModel: NSObject, ObservableObject {
         return min(1, max(0, elapsed / WorkSession.workdayDuration))
     }
 
+    func petRevealDisplay(availablePetIDs: [String]) -> PetRevealDisplay {
+        state.petRevealDisplay(on: now, availablePetIDs: availablePetIDs)
+    }
+
+    func completePetReveal(availablePetIDs: [String]) {
+        guard let workDate = currentSession?.workDate else {
+            return
+        }
+
+        do {
+            state = try tracker.completePetReveal(for: workDate, availablePetIDs: availablePetIDs)
+            statusMessage = nil
+        } catch {
+            statusMessage = error.localizedDescription
+        }
+    }
+
     var menuBarTitle: String {
         guard let remaining else {
             return "Work Timer"
