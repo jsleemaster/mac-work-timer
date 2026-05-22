@@ -21,6 +21,22 @@ scripts/build_app.sh
 open "build/Mac Work Timer.app"
 ```
 
+## Demo distribution
+
+This repository can be distributed as a demo app by attaching a zipped `.app` bundle to a GitHub Release. That is enough for other macOS users to download and try the menu bar timer, floating pet, and local UI behavior.
+
+The demo build is not a production distribution channel. Unless the app is signed with an Apple Developer ID certificate and notarized by Apple, macOS Gatekeeper may show a security warning or require the user to approve the app manually in System Settings.
+
+The public demo intentionally uses `https://gw.example.com` as the default GW address. Real GW/Bizbox integration should be configured privately per user or organization, and this app should remain read-only: it must not submit attendance records, manipulate security apps, or bypass two-factor authentication.
+
+Recommended release path:
+
+1. Build the app with `scripts/build_app.sh`.
+2. Compress `build/Mac Work Timer.app` into a zip file.
+3. Create a GitHub Release such as `v0.1.0`.
+4. Upload the zip as the release asset.
+5. For broader distribution, add Developer ID signing and Apple notarization before publishing the release.
+
 ## GW inspection
 
 Read-only login-page inspection uses Playwright, matching the workspace rule for browser debugging:
