@@ -109,7 +109,7 @@ struct WorkPetView: View {
                     at: time,
                     duration: visualState.frameDuration
                 )
-                petBody(image: frame, blink: fallbackBlink(at: time))
+                petBody(image: frame, petID: PetRevealState.defaultPetID, blink: fallbackBlink(at: time), time: time)
                     .offset(y: 31)
             case .capsuleIdle:
                 capsuleBody(
@@ -126,13 +126,13 @@ struct WorkPetView: View {
                     at: time,
                     duration: visualState.frameDuration
                 )
-                petBody(image: frame, blink: fallbackBlink(at: time))
+                petBody(image: frame, petID: petID, blink: fallbackBlink(at: time), time: time)
                     .offset(y: 31)
             }
         }
     }
 
-    private func petBody(image: NSImage?, blink: Bool) -> some View {
+    private func petBody(image: NSImage?, petID: String, blink: Bool, time: TimeInterval) -> some View {
         ZStack {
             if let image {
                 Image(nsImage: image)
@@ -140,6 +140,13 @@ struct WorkPetView: View {
                     .interpolation(.high)
                     .scaledToFit()
                     .frame(width: 76, height: 82)
+            } else if petID == PetAsset.builtInSpecterPetID {
+                SpecterPetBody(
+                    stage: PetEvolutionStage.stage(mood: mood),
+                    mood: mood,
+                    blink: blink,
+                    time: time
+                )
             } else {
                 fallbackPetBody(blink: blink)
 
@@ -482,6 +489,8 @@ private extension PetVisualState {
 }
 
 private enum PetAsset {
+    static let builtInSpecterPetID = "specter"
+
     static var availablePetIDs: [String] {
         availablePetIDsCache
     }
@@ -505,21 +514,25 @@ private enum PetAsset {
         at time: TimeInterval,
         duration: TimeInterval
     ) -> NSImage? {
-        guard petID != PetRevealState.defaultPetID else {
-            return frame(setName: setName, at: time, duration: duration)
-        }
-
         let requestedFrames = customPetFrames(petID: petID, setName: setName)
         let idleFrames = customPetFrames(petID: petID, setName: "idle")
         let resolvedFrames = requestedFrames.isEmpty ? idleFrames : requestedFrames
 
-        guard !resolvedFrames.isEmpty else {
+        if !resolvedFrames.isEmpty {
+            let frameDuration = max(0.05, duration)
+            let frameIndex = Int((time / frameDuration).rounded(.down)) % resolvedFrames.count
+            return resolvedFrames[frameIndex]
+        }
+
+        if petID == builtInSpecterPetID {
+            return nil
+        }
+
+        if petID == PetRevealState.defaultPetID {
             return frame(setName: setName, at: time, duration: duration)
         }
 
-        let frameDuration = max(0.05, duration)
-        let frameIndex = Int((time / frameDuration).rounded(.down)) % resolvedFrames.count
-        return resolvedFrames[frameIndex]
+        return frame(setName: setName, at: time, duration: duration)
     }
 
     static func capsuleFrame(phase: CapsuleRevealPhase, at time: TimeInterval) -> NSImage? {
@@ -571,7 +584,7 @@ private enum PetAsset {
 
     private static let availablePetIDsCache: [String] = {
         guard let urls = Bundle.main.urls(forResourcesWithExtension: "png", subdirectory: "Images/PetFrames") else {
-            return [PetRevealState.defaultPetID]
+            return [builtInSpecterPetID]
         }
 
         let prefix = "pet-"
@@ -588,11 +601,12 @@ private enum PetAsset {
             .filter { !$0.isEmpty }
             .sorted()
 
-        return ids.isEmpty ? [PetRevealState.defaultPetID] : ids
+        return Array(Set([builtInSpecterPetID] + ids)).sorted()
     }()
 
     private static let customPetFrameCache: [String: [NSImage]] = {
-        let petIDs = availablePetIDsCache.filter { $0 != PetRevealState.defaultPetID }
+        let petIDs = availablePetIDsCache
+            .filter { $0 != PetRevealState.defaultPetID && $0 != builtInSpecterPetID }
         let setNames = [
             "idle",
             "working",
@@ -742,6 +756,250 @@ private final class PetDragNSView: NSView {
         dragStartScreenLocation = nil
         dragStartFrameOrigin = nil
         didMove = false
+    }
+}
+
+private struct SpecterPetBody: View {
+    let stage: PetEvolutionStage
+    let mood: PetMood
+    let blink: Bool
+    let time: TimeInterval
+
+    private var floatOffset: CGFloat {
+        CGFloat(sin(time * 2.4) * 2.2)
+    }
+
+    private var bodySize: CGSize {
+        switch stage {
+        case .base:
+            return CGSize(width: 54, height: 56)
+        case .middle:
+            return CGSize(width: 62, height: 62)
+        case .final:
+            return CGSize(width: 68, height: 66)
+        }
+    }
+
+    var body: some View {
+        ZStack {
+            aura
+
+            if stage != .base {
+                SpecterHand(side: .left, stage: stage, time: time)
+                    .offset(x: stage == .final ? -31 : -28, y: stage == .final ? 4 : 7)
+                SpecterHand(side: .right, stage: stage, time: time)
+                    .offset(x: stage == .final ? 31 : 28, y: stage == .final ? 4 : 7)
+            }
+
+            SpecterBlobShape(stage: stage)
+                .fill(
+                    LinearGradient(
+                        colors: palette,
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .frame(width: bodySize.width, height: bodySize.height)
+                .overlay {
+                    SpecterBlobShape(stage: stage)
+                        .stroke(.white.opacity(0.42), lineWidth: 1.1)
+                        .frame(width: bodySize.width, height: bodySize.height)
+                }
+
+            SpecterFace(stage: stage, blink: blink)
+                .offset(y: stage == .base ? -3 : -5)
+
+            if stage == .final {
+                Image(systemName: mood == .done ? "sparkle" : "moon.fill")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.82))
+                    .offset(x: 19, y: -22)
+            }
+        }
+        .frame(width: 76, height: 82)
+        .offset(y: floatOffset)
+        .scaleEffect(stage == .final && mood == .done ? 1.04 : 1)
+    }
+
+    private var palette: [Color] {
+        switch stage {
+        case .base:
+            return [
+                Color(red: 0.55, green: 0.72, blue: 0.92).opacity(0.96),
+                Color(red: 0.72, green: 0.88, blue: 0.84).opacity(0.98)
+            ]
+        case .middle:
+            return [
+                Color(red: 0.44, green: 0.42, blue: 0.78).opacity(0.97),
+                Color(red: 0.30, green: 0.70, blue: 0.78).opacity(0.98)
+            ]
+        case .final:
+            return [
+                Color(red: 0.32, green: 0.27, blue: 0.56).opacity(0.99),
+                Color(red: 0.16, green: 0.58, blue: 0.64).opacity(0.98)
+            ]
+        }
+    }
+
+    private var aura: some View {
+        Circle()
+            .fill(
+                RadialGradient(
+                    colors: [
+                        Color(red: 0.58, green: 0.92, blue: 0.86).opacity(stage == .base ? 0.28 : 0.36),
+                        .clear
+                    ],
+                    center: .center,
+                    startRadius: 3,
+                    endRadius: stage == .final ? 39 : 32
+                )
+            )
+            .frame(width: stage == .final ? 78 : 68, height: stage == .final ? 78 : 68)
+            .scaleEffect(1 + CGFloat(sin(time * 3.0)) * 0.025)
+    }
+}
+
+private struct SpecterFace: View {
+    let stage: PetEvolutionStage
+    let blink: Bool
+
+    var body: some View {
+        VStack(spacing: stage == .base ? 5 : 6) {
+            HStack(spacing: stage == .final ? 15 : 13) {
+                SpecterEye(stage: stage, blink: blink)
+                SpecterEye(stage: stage, blink: blink)
+            }
+
+            SpecterMouth(stage: stage)
+                .stroke(.white.opacity(0.90), style: StrokeStyle(lineWidth: 1.7, lineCap: .round))
+                .frame(width: stage == .final ? 18 : 15, height: 8)
+        }
+    }
+}
+
+private struct SpecterEye: View {
+    let stage: PetEvolutionStage
+    let blink: Bool
+
+    var body: some View {
+        Capsule(style: .continuous)
+            .fill(stage == .final ? Color(red: 0.95, green: 0.92, blue: 0.72) : .white.opacity(0.94))
+            .frame(
+                width: stage == .final ? 8 : 7,
+                height: blink ? 3 : (stage == .base ? 9 : 11)
+            )
+            .overlay(alignment: .topTrailing) {
+                if stage == .middle {
+                    Rectangle()
+                        .fill(Color.black.opacity(0.22))
+                        .frame(width: 8, height: 1)
+                        .rotationEffect(.degrees(-8))
+                        .offset(y: 1)
+                }
+            }
+    }
+}
+
+private struct SpecterMouth: Shape {
+    let stage: PetEvolutionStage
+
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: rect.minX + 2, y: rect.midY))
+        let controlY = switch stage {
+        case .base:
+            rect.maxY - 1
+        case .middle:
+            rect.midY + 2
+        case .final:
+            rect.minY + 1
+        }
+        path.addQuadCurve(
+            to: CGPoint(x: rect.maxX - 2, y: rect.midY),
+            control: CGPoint(x: rect.midX, y: controlY)
+        )
+        return path
+    }
+}
+
+private struct SpecterHand: View {
+    enum Side {
+        case left
+        case right
+    }
+
+    let side: Side
+    let stage: PetEvolutionStage
+    let time: TimeInterval
+
+    private var direction: CGFloat {
+        side == .left ? -1 : 1
+    }
+
+    var body: some View {
+        ZStack {
+            Capsule(style: .continuous)
+                .fill(Color(red: 0.34, green: 0.67, blue: 0.74).opacity(stage == .final ? 0.92 : 0.78))
+                .frame(width: stage == .final ? 21 : 17, height: 10)
+
+            HStack(spacing: 1) {
+                ForEach(0..<3, id: \.self) { index in
+                    Capsule(style: .continuous)
+                        .fill(.white.opacity(0.58))
+                        .frame(width: 3, height: stage == .final ? 8 : 6)
+                        .offset(y: CGFloat(index % 2) * 1.5)
+                }
+            }
+            .offset(x: direction * 5)
+        }
+        .rotationEffect(.degrees(Double(direction * (stage == .final ? 16 : 10)) + sin(time * 3.2) * 3))
+    }
+}
+
+private struct SpecterBlobShape: Shape {
+    let stage: PetEvolutionStage
+
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        let left = rect.minX
+        let right = rect.maxX
+        let top = rect.minY
+        let bottom = rect.maxY
+        let midX = rect.midX
+
+        path.move(to: CGPoint(x: midX, y: top))
+        path.addCurve(
+            to: CGPoint(x: right, y: rect.midY + 6),
+            control1: CGPoint(x: right - 9, y: top + 1),
+            control2: CGPoint(x: right + 1, y: top + 24)
+        )
+        path.addCurve(
+            to: CGPoint(x: midX + 14, y: bottom - 5),
+            control1: CGPoint(x: right - 1, y: bottom - 6),
+            control2: CGPoint(x: midX + 25, y: bottom - 2)
+        )
+
+        if stage == .base {
+            path.addQuadCurve(to: CGPoint(x: midX, y: bottom - 1), control: CGPoint(x: midX + 8, y: bottom - 12))
+            path.addQuadCurve(to: CGPoint(x: midX - 14, y: bottom - 5), control: CGPoint(x: midX - 8, y: bottom - 12))
+        } else {
+            path.addQuadCurve(to: CGPoint(x: midX + 4, y: bottom - 1), control: CGPoint(x: midX + 8, y: bottom - 12))
+            path.addQuadCurve(to: CGPoint(x: midX - 8, y: bottom - 2), control: CGPoint(x: midX - 2, y: bottom - 13))
+            path.addQuadCurve(to: CGPoint(x: midX - 18, y: bottom - 6), control: CGPoint(x: midX - 15, y: bottom - 13))
+        }
+
+        path.addCurve(
+            to: CGPoint(x: left, y: rect.midY + 5),
+            control1: CGPoint(x: left + 6, y: bottom - 2),
+            control2: CGPoint(x: left - 1, y: bottom - 20)
+        )
+        path.addCurve(
+            to: CGPoint(x: midX, y: top),
+            control1: CGPoint(x: left + 2, y: top + 21),
+            control2: CGPoint(x: left + 13, y: top + 1)
+        )
+        path.closeSubpath()
+        return path
     }
 }
 

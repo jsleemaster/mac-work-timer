@@ -33,3 +33,20 @@ public enum PetMood: Equatable, Sendable {
         return .working
     }
 }
+
+public enum PetEvolutionStage: Equatable, Sendable {
+    case base
+    case middle
+    case `final`
+
+    public static func stage(mood: PetMood) -> PetEvolutionStage {
+        switch mood {
+        case .idle, .working:
+            return .base
+        case .under1h, .under30m:
+            return .middle
+        case .under5m, .done:
+            return .final
+        }
+    }
+}
