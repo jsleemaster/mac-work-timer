@@ -1,9 +1,10 @@
 import AppKit
+import MacWorkTimerCore
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
-        NSApp.setActivationPolicy(.regular)
+        NSApp.setActivationPolicy(.accessory)
         StatusBarController.shared.start()
         showAppSurfaces()
         DispatchQueue.main.async {
@@ -12,12 +13,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        showAppSurfaces()
+        MainWindowController.shared.showLogin()
+        PetWindowController.shared.show()
         return true
     }
 
     private func showAppSurfaces() {
-        MainWindowController.shared.show()
+        if MainWindowPresentationPolicy.shouldShowMainWindowOnLaunch {
+            MainWindowController.shared.showLogin()
+        }
         PetWindowController.shared.show()
     }
 }

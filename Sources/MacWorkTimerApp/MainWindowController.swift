@@ -1,4 +1,5 @@
 import AppKit
+import MacWorkTimerCore
 import SwiftUI
 
 @MainActor
@@ -7,11 +8,21 @@ final class MainWindowController: NSObject, NSWindowDelegate {
 
     private var window: NSWindow?
 
-    func show() {
+    func showLogin() {
+        guard MainWindowPresentationPolicy.shouldOpenLoginWindow(hasSession: AppModel.shared.currentSession != nil) else {
+            hide()
+            PetWindowController.shared.show()
+            return
+        }
+
         let window = existingOrCreateWindow()
         resizeForCurrentState()
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    func hide() {
+        window?.orderOut(nil)
     }
 
     func resizeForCurrentState() {
@@ -19,9 +30,13 @@ final class MainWindowController: NSObject, NSWindowDelegate {
             return
         }
 
-        let size = AppModel.shared.currentSession == nil
-            ? NSSize(width: 620, height: 560)
-            : NSSize(width: 430, height: 280)
+        let hasSession = AppModel.shared.currentSession != nil
+        guard !MainWindowPresentationPolicy.shouldHideMainWindow(hasSession: hasSession) else {
+            hide()
+            return
+        }
+
+        let size = Self.contentSize(hasSession: hasSession)
 
         guard window.contentView?.frame.size != size else {
             return
@@ -41,9 +56,7 @@ final class MainWindowController: NSObject, NSWindowDelegate {
         let window = NSWindow(
             contentRect: NSRect(
                 origin: .zero,
-                size: AppModel.shared.currentSession == nil
-                    ? NSSize(width: 620, height: 560)
-                    : NSSize(width: 430, height: 280)
+                size: Self.contentSize(hasSession: AppModel.shared.currentSession != nil)
             ),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
@@ -61,5 +74,10 @@ final class MainWindowController: NSObject, NSWindowDelegate {
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         sender.orderOut(nil)
         return false
+    }
+
+    private static func contentSize(hasSession: Bool) -> NSSize {
+        let size = MainWindowMetrics.contentSize(hasSession: hasSession)
+        return NSSize(width: size.width, height: size.height)
     }
 }

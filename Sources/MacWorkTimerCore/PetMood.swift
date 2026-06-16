@@ -39,6 +39,48 @@ public enum PetEvolutionStage: Equatable, Sendable {
     case middle
     case `final`
 
+    public static func stage(
+        elapsed: TimeInterval?,
+        duration: TimeInterval,
+        stageCount: Int = 3
+    ) -> PetEvolutionStage {
+        let index = stageIndex(elapsed: elapsed, duration: duration, stageCount: stageCount)
+        return stage(forStageIndex: index, stageCount: stageCount)
+    }
+
+    public static func stageIndex(
+        elapsed: TimeInterval?,
+        duration: TimeInterval,
+        stageCount: Int
+    ) -> Int {
+        guard stageCount > 0, duration > 0, let elapsed else {
+            return 0
+        }
+
+        let clampedElapsed = min(max(0, elapsed), duration)
+        if clampedElapsed >= duration {
+            return stageCount - 1
+        }
+
+        let stageDuration = duration / Double(stageCount)
+        return min(stageCount - 1, Int((clampedElapsed / stageDuration).rounded(.down)))
+    }
+
+    public static func stage(forStageIndex index: Int, stageCount: Int) -> PetEvolutionStage {
+        guard stageCount > 1 else {
+            return .base
+        }
+
+        let clampedIndex = min(max(0, index), stageCount - 1)
+        if clampedIndex == 0 {
+            return .base
+        }
+        if clampedIndex == stageCount - 1 {
+            return .final
+        }
+        return .middle
+    }
+
     public static func stage(mood: PetMood) -> PetEvolutionStage {
         switch mood {
         case .idle, .working:

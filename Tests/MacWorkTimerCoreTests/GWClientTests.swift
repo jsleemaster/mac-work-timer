@@ -57,6 +57,31 @@ final class GWClientTests: XCTestCase {
         ).date)
         XCTAssertEqual(status, .attendance(AttendanceRecord(workDate: "2026-05-19", checkInAt: startAt, sourceText: "출근 2026.05.19 09:25:07")))
     }
+
+    func testLoginActionIgnoresJavascriptAssignmentsBeforeFormAction() async throws {
+        let loginPageHTML = """
+        <script>
+        document.loginForm.action="https://"+serverName+":"+port+"/gw/uat/uia/actionLogin.do";
+        </script>
+        <form name="loginForm" action ="/gw/uat/uia/actionLogin.do" method="post"></form>
+        """
+        let transport = RecordingGWTransport(responses: [
+            (HTTPURLResponse.fixture(url: "https://gw.example.com/gw/uat/uia/egovLoginUsr.do", statusCode: 200), Data(loginPageHTML.utf8)),
+            (HTTPURLResponse.fixture(url: "https://gw.example.com/gw/uat/uia/actionLogin.do", statusCode: 200), Data("<div class=\"secondCert\">이차인증</div>".utf8))
+        ])
+        let client = GWClient(
+            baseURL: URL(string: "https://gw.example.com")!,
+            credentialStore: InMemoryCredentialStore(credentials: GWCredentials(userID: "u", password: "p")),
+            transport: transport
+        )
+
+        _ = await client.refreshTodayStatus()
+
+        XCTAssertEqual(transport.requests.map(\.url?.absoluteString), [
+            "https://gw.example.com/gw/uat/uia/egovLoginUsr.do",
+            "https://gw.example.com/gw/uat/uia/actionLogin.do"
+        ])
+    }
 }
 
 private final class InMemoryCredentialStore: GWCredentialProviding, @unchecked Sendable {

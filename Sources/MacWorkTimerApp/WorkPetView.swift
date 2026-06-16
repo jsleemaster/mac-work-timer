@@ -13,6 +13,14 @@ struct WorkPetView: View {
         PetMood.mood(remaining: model.remaining)
     }
 
+    private var defaultEvolutionStage: PetEvolutionStage {
+        PetEvolutionStage.stage(elapsed: model.elapsed, duration: workdayDuration)
+    }
+
+    private var workdayDuration: TimeInterval {
+        model.currentSession?.workdayDuration ?? WorkSession.workdayDuration
+    }
+
     private var visualState: PetVisualState {
         PetVisualState.make(
             remaining: model.remaining,
@@ -35,6 +43,22 @@ struct WorkPetView: View {
         return visualState.label
     }
 
+    private var leaveTimeText: String? {
+        PetVisualState.leaveTimeText(targetAt: model.currentSession?.targetAt)
+    }
+
+    private var agentUsageCards: [AgentUsageCard] {
+        model.agentUsageCards
+    }
+
+    private var hasLeaveTime: Bool {
+        leaveTimeText != nil
+    }
+
+    private var spriteOffsetY: CGFloat {
+        CGFloat(PetPanelMetrics.spriteOffsetY(hasLeaveTime: hasLeaveTime))
+    }
+
     private var labelTextColor: Color {
         if case .capsuleIdle = revealDisplay {
             return Color(red: 0.18, green: 0.20, blue: 0.22).opacity(0.78)
@@ -53,26 +77,55 @@ struct WorkPetView: View {
 
     var body: some View {
         ZStack(alignment: .top) {
-            Text(labelText)
-                .font(.system(size: 10, weight: .semibold, design: .rounded))
-                .foregroundStyle(labelTextColor)
-                .lineLimit(1)
-                .minimumScaleFactor(0.72)
+            VStack(spacing: 1) {
+                if let leaveTimeText {
+                    Text(leaveTimeText)
+                        .font(.system(size: 13.5, weight: .bold, design: .rounded))
+                        .foregroundStyle(labelTextColor)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.82)
+
+                    Text(labelText)
+                        .font(.system(size: 10.2, weight: .semibold, design: .rounded))
+                        .foregroundStyle(labelTextColor.opacity(0.74))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.78)
+                } else {
+                    Text(labelText)
+                        .font(.system(size: 11.4, weight: .semibold, design: .rounded))
+                        .foregroundStyle(labelTextColor)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.78)
+                }
+
+            }
                 .padding(.horizontal, 8)
-                .padding(.vertical, 5)
+                .padding(.vertical, leaveTimeText == nil ? 5 : 3)
                 .liquidGlass(
                     in: Capsule(style: .continuous),
                     tint: labelGlassTint,
                     interactive: true
                 )
-                .frame(maxWidth: 104)
+                .frame(maxWidth: PetPanelMetrics.labelMaxWidth)
                 .transition(.scale(scale: 0.92).combined(with: .opacity))
                 .offset(y: 2)
                 .animation(.smooth(duration: 0.18), value: labelText)
+                .animation(.smooth(duration: 0.18), value: leaveTimeText)
 
             spritePetBody
+                .offset(x: agentUsageCards.isEmpty ? 0 : CGFloat(PetPanelMetrics.agentUsageSpriteOffsetX))
+
+            if !agentUsageCards.isEmpty {
+                AgentUsageSidePanel(cards: agentUsageCards)
+                    .frame(width: CGFloat(PetPanelMetrics.agentUsageGridWidth))
+                    .offset(
+                        x: CGFloat(PetPanelMetrics.agentUsageGridOffsetX),
+                        y: CGFloat(PetPanelMetrics.agentUsageGridOffsetY)
+                    )
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
+            }
         }
-        .frame(width: 108, height: 124)
+        .frame(width: PetPanelMetrics.width, height: PetPanelMetrics.height)
         .contentShape(Rectangle())
         .overlay {
             PetDragSurface(
@@ -109,8 +162,8 @@ struct WorkPetView: View {
                     at: time,
                     duration: visualState.frameDuration
                 )
-                petBody(image: frame, petID: PetRevealState.defaultPetID, blink: fallbackBlink(at: time), time: time)
-                    .offset(y: 31)
+                petBody(image: frame, petID: PetRevealState.defaultPetID, stage: defaultEvolutionStage, blink: fallbackBlink(at: time), time: time)
+                    .offset(y: spriteOffsetY)
             case .capsuleIdle:
                 capsuleBody(
                     image: PetAsset.capsuleFrame(phase: capsulePhase, at: time),
@@ -118,28 +171,35 @@ struct WorkPetView: View {
                     time: time,
                     elapsed: capsuleElapsed
                 )
-                .offset(y: 31)
+                .offset(y: spriteOffsetY)
             case .petVisible(let petID):
+                let stageCount = PetAsset.evolutionStageCount(for: petID)
+                let stageIndex = PetEvolutionStage.stageIndex(
+                    elapsed: model.elapsed,
+                    duration: workdayDuration,
+                    stageCount: stageCount
+                )
+                let stage = PetEvolutionStage.stage(forStageIndex: stageIndex, stageCount: stageCount)
                 let frame = PetAsset.petFrame(
                     petID: petID,
                     setName: visualState.frameSetName,
-                    stage: PetEvolutionStage.stage(mood: mood),
+                    stageIndex: stageIndex,
                     at: time,
                     duration: visualState.frameDuration
                 )
-                petBody(image: frame, petID: petID, blink: fallbackBlink(at: time), time: time)
-                    .offset(y: 31)
+                petBody(image: frame, petID: petID, stage: stage, blink: fallbackBlink(at: time), time: time)
+                    .offset(y: spriteOffsetY)
             }
         }
     }
 
-    private func petBody(image: NSImage?, petID: String, blink: Bool, time: TimeInterval) -> some View {
+    private func petBody(image: NSImage?, petID: String, stage: PetEvolutionStage, blink: Bool, time: TimeInterval) -> some View {
         ZStack {
             if let image {
                 if petID == PetAsset.localEvolutionPetID {
                     LocalEvolutionPetImage(
                         image: image,
-                        stage: PetEvolutionStage.stage(mood: mood),
+                        stage: stage,
                         blink: blink,
                         time: time
                     )
@@ -152,7 +212,7 @@ struct WorkPetView: View {
                 }
             } else if petID == PetAsset.builtInSpecterPetID {
                 SpecterPetBody(
-                    stage: PetEvolutionStage.stage(mood: mood),
+                    stage: stage,
                     mood: mood,
                     blink: blink,
                     time: time
@@ -230,11 +290,21 @@ struct WorkPetView: View {
     }
 
     private func handleClick() {
-        if case .capsuleIdle = revealDisplay {
+        switch PetClickAction.action(for: revealDisplay) {
+        case .openLogin:
+            openLoginWindow()
+        case .revealCapsule:
             revealCapsule()
-        } else {
+        case .showStatusMessage:
             showCurrentMessage()
         }
+    }
+
+    private func openLoginWindow() {
+        withAnimation(.smooth(duration: 0.18)) {
+            temporaryMessage = nil
+        }
+        MainWindowController.shared.showLogin()
     }
 
     private func revealCapsule() {
@@ -269,6 +339,133 @@ struct WorkPetView: View {
     private func showCurrentMessage() {
         withAnimation(.smooth(duration: 0.22)) {
             temporaryMessage = PetVisualState.clickMessage(remaining: model.remaining, elapsed: model.elapsed)
+        }
+    }
+}
+
+private struct AgentUsageSidePanel: View {
+    let cards: [AgentUsageCard]
+
+    private var columns: [GridItem] {
+        Array(
+            repeating: GridItem(
+                .fixed(CGFloat(PetPanelMetrics.agentUsageGridColumnWidth)),
+                spacing: CGFloat(PetPanelMetrics.agentUsageGridSpacing)
+            ),
+            count: PetPanelMetrics.agentUsageGridColumnCount
+        )
+    }
+
+    var body: some View {
+        LazyVGrid(columns: columns, alignment: .leading, spacing: CGFloat(PetPanelMetrics.agentUsageGridSpacing)) {
+            ForEach(cards) { card in
+                AgentUsageCardBadge(card: card)
+                    .frame(width: CGFloat(PetPanelMetrics.agentUsageGridColumnWidth))
+            }
+        }
+        .animation(.smooth(duration: 0.22), value: cards)
+    }
+}
+
+private struct AgentUsageCardBadge: View {
+    let card: AgentUsageCard
+
+    private var accent: Color {
+        switch card.provider {
+        case .codex:
+            return Color(red: 0.18, green: 0.43, blue: 0.86)
+        case .claude:
+            return Color(red: 0.80, green: 0.37, blue: 0.16)
+        }
+    }
+
+    private var providerText: String {
+        card.provider.displayName
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                Text(providerText)
+                    .font(.system(size: CGFloat(PetPanelMetrics.agentUsageProviderFontSize), weight: .bold, design: .rounded))
+                    .foregroundStyle(accent.opacity(0.76))
+                    .lineLimit(1)
+
+                Spacer(minLength: 3)
+
+                if !card.isResetDominant, let secondaryText = card.secondaryText {
+                    Text(secondaryText)
+                        .font(.system(size: CGFloat(PetPanelMetrics.agentUsageSecondaryFontSize), weight: .heavy, design: .rounded))
+                        .foregroundStyle(Color.black.opacity(0.66))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.78)
+                }
+            }
+
+            if card.isResetDominant {
+                Text(card.primaryText)
+                    .font(.system(size: CGFloat(PetPanelMetrics.agentUsageResetPrimaryFontSize), weight: .heavy, design: .rounded))
+                    .foregroundStyle(accent)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
+            } else {
+                Text(card.primaryText)
+                    .font(.system(size: CGFloat(PetPanelMetrics.agentUsagePrimaryFontSize), weight: .heavy, design: .rounded))
+                    .foregroundStyle(Color.black.opacity(0.78))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.78)
+            }
+
+            if card.isResetDominant, let secondaryText = card.secondaryText {
+                Text(secondaryText)
+                    .font(.system(size: CGFloat(PetPanelMetrics.agentUsageSecondaryFontSize), weight: .heavy, design: .rounded))
+                    .foregroundStyle(Color.black.opacity(0.56))
+            }
+
+            AgentUsageMeter(percent: card.remainingPercent, accent: accent)
+                .frame(height: CGFloat(PetPanelMetrics.agentUsageMeterHeight))
+        }
+        .padding(.horizontal, 7)
+        .padding(.vertical, 6)
+        .liquidGlass(
+            in: RoundedRectangle(cornerRadius: 9, style: .continuous),
+            tint: accent.opacity(0.12),
+            interactive: true
+        )
+    }
+}
+
+private struct AgentUsageMeter: View {
+    let percent: Int
+    let accent: Color
+
+    var body: some View {
+        TimelineView(.animation) { timeline in
+            GeometryReader { proxy in
+                let width = max(4, proxy.size.width * CGFloat(percent) / 100)
+                let phase = timeline.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 1.8) / 1.8
+
+                ZStack(alignment: .leading) {
+                    Capsule(style: .continuous)
+                        .fill(Color.black.opacity(0.16))
+
+                    Capsule(style: .continuous)
+                        .fill(accent.opacity(percent == 0 ? 0.36 : 0.9))
+                        .frame(width: width)
+                        .overlay(alignment: .leading) {
+                            Capsule(style: .continuous)
+                                .fill(.white.opacity(percent == 0 ? 0.12 : 0.42))
+                                .frame(width: 16)
+                                .offset(x: (width + 12) * phase - 12)
+                                .clipped()
+                        }
+                        .overlay {
+                            Capsule(style: .continuous)
+                                .stroke(.white.opacity(0.35), lineWidth: 0.6)
+                        }
+                }
+                .animation(.smooth(duration: 0.24), value: percent)
+            }
         }
     }
 }
@@ -523,12 +720,12 @@ private enum PetAsset {
     static func petFrame(
         petID: String,
         setName: String,
-        stage: PetEvolutionStage,
+        stageIndex: Int,
         at time: TimeInterval,
         duration: TimeInterval
     ) -> NSImage? {
         if petID == localEvolutionPetID {
-            return localEvolutionImage(stage: stage)
+            return localEvolutionImage(stageIndex: stageIndex)
         }
 
         let requestedFrames = customPetFrames(petID: petID, setName: setName)
@@ -550,6 +747,14 @@ private enum PetAsset {
         }
 
         return frame(setName: setName, at: time, duration: duration)
+    }
+
+    static func evolutionStageCount(for petID: String) -> Int {
+        if petID == localEvolutionPetID {
+            return localEvolutionImageURLs.count
+        }
+
+        return 3
     }
 
     static func capsuleFrame(phase: CapsuleRevealPhase, at time: TimeInterval) -> NSImage? {
@@ -683,27 +888,37 @@ private enum PetAsset {
         localEvolutionImageURLs.allSatisfy { FileManager.default.fileExists(atPath: $0.path) }
     }
 
-    private static func localEvolutionImage(stage: PetEvolutionStage) -> NSImage? {
-        let url = switch stage {
-        case .base:
-            localEvolutionImageURLs[0]
-        case .middle:
-            localEvolutionImageURLs[1]
-        case .final:
-            localEvolutionImageURLs[2]
+    private static func localEvolutionImage(stageIndex: Int) -> NSImage? {
+        guard !localEvolutionImageURLs.isEmpty else {
+            return nil
         }
 
-        return NSImage(contentsOf: url)
+        let index = min(max(0, stageIndex), localEvolutionImageURLs.count - 1)
+        return NSImage(contentsOf: localEvolutionImageURLs[index])
     }
 
     private static let localEvolutionDirectory = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("MacWorkTimerLocalPets", isDirectory: true)
 
-    private static let localEvolutionImageURLs = [
-        localEvolutionDirectory.appendingPathComponent("stage-1.png"),
-        localEvolutionDirectory.appendingPathComponent("stage-2.png"),
-        localEvolutionDirectory.appendingPathComponent("stage-3.png")
-    ]
+    private static let localEvolutionImageURLs: [URL] = {
+        let urls = (try? FileManager.default.contentsOfDirectory(
+            at: localEvolutionDirectory,
+            includingPropertiesForKeys: nil
+        )) ?? []
+
+        let numberedStagePattern = /^stage-(\d+)\.png$/
+        let numberedStages = urls.compactMap { url -> (Int, URL)? in
+            guard let match = url.lastPathComponent.wholeMatch(of: numberedStagePattern),
+                  let number = Int(match.1) else {
+                return nil
+            }
+            return (number, url)
+        }
+        .sorted { lhs, rhs in lhs.0 < rhs.0 }
+        .map(\.1)
+
+        return numberedStages
+    }()
 
     private static let fallbackImage: NSImage? = Bundle.main.url(
         forResource: "work-pet",
@@ -919,15 +1134,15 @@ private struct LocalEvolutionPetImage: View {
                 .resizable()
                 .interpolation(.high)
                 .scaledToFit()
-                .frame(width: 78, height: 84)
+                .frame(width: PetPanelMetrics.localImageWidth, height: PetPanelMetrics.localImageHeight)
 
             LocalPetBlinkOverlay(stage: stage)
                 .opacity(blink ? 1 : 0)
                 .animation(.smooth(duration: 0.08), value: blink)
         }
-        .frame(width: 82, height: 88)
+        .frame(width: PetPanelMetrics.localSpriteWidth, height: PetPanelMetrics.localSpriteHeight)
         .offset(y: floatOffset)
-        .scaleEffect(stage == .final ? 1.02 : 0.98)
+        .scaleEffect(stage == .final ? PetPanelMetrics.maxScale : 0.98)
     }
 }
 
@@ -944,7 +1159,7 @@ private struct LocalPetBlinkOverlay: View {
                     .position(eye.position)
             }
         }
-        .frame(width: 82, height: 88)
+        .frame(width: PetPanelMetrics.localSpriteWidth, height: PetPanelMetrics.localSpriteHeight)
         .allowsHitTesting(false)
     }
 

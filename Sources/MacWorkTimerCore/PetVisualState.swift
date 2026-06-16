@@ -75,6 +75,21 @@ public struct PetVisualState: Equatable, Sendable {
         return "\(minutes)분"
     }
 
+    public static func leaveTimeText(
+        targetAt: Date?,
+        timeZone: TimeZone = TimeZone(identifier: "Asia/Seoul")!
+    ) -> String? {
+        guard let targetAt else {
+            return nil
+        }
+
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+        let hour = calendar.component(.hour, from: targetAt)
+        let minute = calendar.component(.minute, from: targetAt)
+        return String(format: "퇴근 %02d:%02d", hour, minute)
+    }
+
     private static func defaultLabel(for mood: PetMood, remaining: TimeInterval?) -> String {
         switch mood {
         case .idle:

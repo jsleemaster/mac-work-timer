@@ -7,6 +7,7 @@ macOS menu bar app for tracking a 9-hour workday from the GW attendance check-in
 - Reads the GW check-in record after web login.
 - Calculates the target time as check-in + 9 hours using wall-clock elapsed time.
 - Shows remaining time in the menu bar and a normal SwiftUI window.
+- Shows local Codex/Claude limit status only when a 5-hour or weekly AI limit is hit.
 - Stores app state in `~/Library/Application Support/Mac Work Timer/state.json`.
 - Stores GW credentials only in macOS Keychain.
 - Tries read-only GW login/status refresh with `URLSession`; if 2FA or policy blocks it, opens GW in an embedded `WKWebView`.
@@ -60,6 +61,24 @@ Local-only personal pet images can also be stored outside the repository at `~/M
 - `sources.json`
 
 When all three PNG files exist, the app treats them as one local-only evolving pet and keeps those files out of GitHub and public release builds.
+
+## AI limit indicator
+
+The floating pet and menu dropdown show Codex and Claude only when a local 5-hour or weekly AI limit is exhausted. Normal non-limited usage is hidden to keep the timer quiet.
+
+- Codex is read from local `~/.codex/sessions/**/*.jsonl` rate-limit events, including primary 5-hour and secondary weekly windows when present.
+- Claude is read from `~/Library/Application Support/Mac Work Timer/agent-usage/claude.json` when a Claude Code status line bridge writes it.
+- If the bridge is not configured, the app also checks `~/.claude/plugins/claude-hud/.usage-cache.json` and marks stale values as waiting.
+
+When a limit is hit, the card prioritizes reset progress, for example `초기화 3%`, plus the exact reset time. The app only reads rate-limit fields such as percentage and reset time. It does not store prompts, responses, API keys, tokens, or environment variables.
+
+Optional Claude Code bridge:
+
+```bash
+scripts/claude_statusline_bridge.js
+```
+
+The bridge reads Claude Code status-line JSON from stdin and writes only the five-hour/weekly usage percentage and reset timestamp to the app support folder. If you already use a status-line command, call the bridge with `--forward "<existing command>"` so the existing status line still renders.
 
 ## GW inspection
 

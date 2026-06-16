@@ -14,11 +14,43 @@ public final class SessionTracker {
     }
 
     @discardableResult
-    public func startOrResume(now: Date = Date()) throws -> AppState {
+    public func startOrResume(now: Date = Date(), preferredStart: Date? = nil) throws -> AppState {
         var state = try store.load()
-        state.todaySession = clock.session(for: now, existing: state.todaySession)
+        let workDate = clock.workDate(for: now)
+        state.todaySession = clock.session(for: preferredStart ?? now, existing: state.todaySession)
+        if let preferredStart,
+           clock.workDate(for: preferredStart) == workDate,
+           let session = state.todaySession,
+           session.workDate == workDate,
+           shouldApplyPreferredStart(preferredStart, to: session, state: state, workDate: workDate) {
+            state.todaySession = WorkSession(
+                workDate: session.workDate,
+                workStartAt: preferredStart,
+                workdayMode: session.workdayMode
+            )
+            if state.notificationSentForDate == workDate {
+                state.notificationSentForDate = nil
+            }
+        }
         try store.save(state)
         return state
+    }
+
+    private func shouldApplyPreferredStart(
+        _ preferredStart: Date,
+        to session: WorkSession,
+        state: AppState,
+        workDate: String
+    ) -> Bool {
+        guard preferredStart != session.workStartAt else {
+            return false
+        }
+
+        if case .attendance(let record) = state.gwStatus, record.workDate == workDate {
+            return false
+        }
+
+        return true
     }
 
     @discardableResult
@@ -41,6 +73,20 @@ public final class SessionTracker {
     @discardableResult
     public func clearSessionAndGWStatus() throws -> AppState {
         let state = AppState(todaySession: nil, gwStatus: .notConfigured, notificationSentForDate: nil)
+        try store.save(state)
+        return state
+    }
+
+    @discardableResult
+    public func setWorkdayMode(_ mode: WorkdayMode, for workDate: String) throws -> AppState {
+        var state = try store.load()
+        state.workdayModeSelection = WorkdayModeSelection(workDate: workDate, mode: mode)
+        if let session = state.todaySession, session.workDate == workDate {
+            state.todaySession = session.withWorkdayMode(mode)
+        }
+        if state.notificationSentForDate == workDate {
+            state.notificationSentForDate = nil
+        }
         try store.save(state)
         return state
     }
