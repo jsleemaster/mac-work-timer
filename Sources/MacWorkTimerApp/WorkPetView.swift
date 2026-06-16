@@ -698,7 +698,7 @@ private extension PetVisualState {
 
 private enum PetAsset {
     static let builtInSpecterPetID = "specter"
-    static let localEvolutionPetID = "local-evolution"
+    static let localEvolutionPetID = LocalPetCatalog.legacyPetID
 
     static var availablePetIDs: [String] {
         availablePetIDsCache
@@ -724,8 +724,8 @@ private enum PetAsset {
         at time: TimeInterval,
         duration: TimeInterval
     ) -> NSImage? {
-        if petID == localEvolutionPetID {
-            return localEvolutionImage(stageIndex: stageIndex)
+        if let image = localPetImage(petID: petID, stageIndex: stageIndex) {
+            return image
         }
 
         let requestedFrames = customPetFrames(petID: petID, setName: setName)
@@ -750,8 +750,8 @@ private enum PetAsset {
     }
 
     static func evolutionStageCount(for petID: String) -> Int {
-        if petID == localEvolutionPetID {
-            return localEvolutionImageURLs.count
+        if let localPet = localPetDescriptor(for: petID) {
+            return localPet.stageImageURLs.count
         }
 
         return 3
@@ -805,13 +805,9 @@ private enum PetAsset {
     }()
 
     private static let availablePetIDsCache: [String] = {
-        guard let urls = Bundle.main.urls(forResourcesWithExtension: "png", subdirectory: "Images/PetFrames") else {
-            return localEvolutionAvailable ? [localEvolutionPetID, builtInSpecterPetID] : [builtInSpecterPetID]
-        }
-
         let prefix = "pet-"
         let suffix = "-idle-0.png"
-        let ids = urls
+        let ids = (Bundle.main.urls(forResourcesWithExtension: "png", subdirectory: "Images/PetFrames") ?? [])
             .map(\.lastPathComponent)
             .compactMap { fileName -> String? in
                 guard fileName.hasPrefix(prefix), fileName.hasSuffix(suffix) else {
@@ -823,13 +819,14 @@ private enum PetAsset {
             .filter { !$0.isEmpty }
             .sorted()
 
-        let builtIns = localEvolutionAvailable ? [localEvolutionPetID, builtInSpecterPetID] : [builtInSpecterPetID]
+        let builtIns = localPetDescriptors.map(\.id) + [builtInSpecterPetID]
         return Array(Set(builtIns + ids)).sorted()
     }()
 
     private static let customPetFrameCache: [String: [NSImage]] = {
         let petIDs = availablePetIDsCache
             .filter { $0 != PetRevealState.defaultPetID && $0 != builtInSpecterPetID }
+            .filter { localPetDescriptor(for: $0) == nil }
         let setNames = [
             "idle",
             "working",
@@ -884,41 +881,25 @@ private enum PetAsset {
         }
     }
 
-    private static var localEvolutionAvailable: Bool {
-        localEvolutionImageURLs.allSatisfy { FileManager.default.fileExists(atPath: $0.path) }
-    }
-
-    private static func localEvolutionImage(stageIndex: Int) -> NSImage? {
-        guard !localEvolutionImageURLs.isEmpty else {
+    private static func localPetImage(petID: String, stageIndex: Int) -> NSImage? {
+        guard let descriptor = localPetDescriptor(for: petID),
+              !descriptor.stageImageURLs.isEmpty else {
             return nil
         }
 
-        let index = min(max(0, stageIndex), localEvolutionImageURLs.count - 1)
-        return NSImage(contentsOf: localEvolutionImageURLs[index])
+        let index = min(max(0, stageIndex), descriptor.stageImageURLs.count - 1)
+        return NSImage(contentsOf: descriptor.stageImageURLs[index])
+    }
+
+    private static func localPetDescriptor(for petID: String) -> LocalPetDescriptor? {
+        localPetDescriptors.first { $0.id == petID }
     }
 
     private static let localEvolutionDirectory = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("MacWorkTimerLocalPets", isDirectory: true)
 
-    private static let localEvolutionImageURLs: [URL] = {
-        let urls = (try? FileManager.default.contentsOfDirectory(
-            at: localEvolutionDirectory,
-            includingPropertiesForKeys: nil
-        )) ?? []
-
-        let numberedStagePattern = /^stage-(\d+)\.png$/
-        let numberedStages = urls.compactMap { url -> (Int, URL)? in
-            guard let match = url.lastPathComponent.wholeMatch(of: numberedStagePattern),
-                  let number = Int(match.1) else {
-                return nil
-            }
-            return (number, url)
-        }
-        .sorted { lhs, rhs in lhs.0 < rhs.0 }
-        .map(\.1)
-
-        return numberedStages
-    }()
+    private static let localPetDescriptors: [LocalPetDescriptor] =
+        LocalPetCatalog(directory: localEvolutionDirectory).descriptors()
 
     private static let fallbackImage: NSImage? = Bundle.main.url(
         forResource: "work-pet",
