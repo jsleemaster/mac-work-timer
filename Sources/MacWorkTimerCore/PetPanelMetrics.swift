@@ -2,7 +2,7 @@ import Foundation
 
 public enum PetPanelMetrics {
     public static let width: Double = 258
-    public static let height: Double = 158
+    public static let height: Double = 188
     public static let labelMaxWidth: Double = 188
     public static let agentUsageGridColumnCount: Int = 2
     public static let agentUsageGridColumnWidth: Double = 72

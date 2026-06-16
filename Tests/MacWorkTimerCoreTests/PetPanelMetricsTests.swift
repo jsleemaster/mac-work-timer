@@ -9,6 +9,15 @@ final class PetPanelMetricsTests: XCTestCase {
         )
     }
 
+    func testTwoLineLabelLeavesComfortableBottomClearanceForLocalEvolutionSprite() {
+        let comfortableBottomClearance = 24.0
+
+        XCTAssertGreaterThanOrEqual(
+            PetPanelMetrics.height - PetPanelMetrics.localSpriteVisualBottom(hasLeaveTime: true),
+            comfortableBottomClearance
+        )
+    }
+
     func testSingleLineLabelLeavesBottomMarginForLocalEvolutionSprite() {
         XCTAssertLessThanOrEqual(
             PetPanelMetrics.localSpriteVisualBottom(hasLeaveTime: false),
@@ -39,6 +48,20 @@ final class PetPanelMetricsTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(
             PetPanelMetrics.agentUsageGridColumnWidth,
             PetPanelMetrics.agentUsagePrimaryFontSize * 4
+        )
+    }
+
+    func testAgentUsageCardsDoNotSitOnPanelBottomEdge() {
+        let comfortableBottomClearance = 24.0
+        let estimatedTallCardHeight = 64.0
+        let visualBottom =
+            PetPanelMetrics.agentUsageGridOffsetY
+            + estimatedTallCardHeight
+            + PetPanelMetrics.maxFloatOffset
+
+        XCTAssertGreaterThanOrEqual(
+            PetPanelMetrics.height - visualBottom,
+            comfortableBottomClearance
         )
     }
 }
