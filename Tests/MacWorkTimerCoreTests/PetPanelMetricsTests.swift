@@ -51,6 +51,10 @@ final class PetPanelMetricsTests: XCTestCase {
         )
     }
 
+    func testAgentUsageCardCanFitResetUntilCopyWithoutEllipsis() {
+        XCTAssertGreaterThanOrEqual(PetPanelMetrics.agentUsageGridColumnWidth, 96)
+    }
+
     func testAgentUsageCardsDoNotSitOnPanelBottomEdge() {
         let comfortableBottomClearance = 24.0
         let estimatedTallCardHeight = 64.0

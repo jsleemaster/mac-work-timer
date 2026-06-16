@@ -337,8 +337,8 @@ public enum AgentUsageFormatter {
         return AgentUsageCard(
             provider: snapshot.provider,
             remainingPercent: resetPercent,
-            primaryText: "초기화 \(resetPercent)%",
-            secondaryText: resetText.map { "\(snapshot.windowKind.limitLabel) · \($0)" } ?? snapshot.windowKind.limitLabel,
+            primaryText: "초기화 까지 \(resetPercent)%",
+            secondaryText: secondaryResetText(for: snapshot.windowKind, resetText: resetText),
             resetAt: snapshot.resetAt,
             isResetDominant: true
         )
@@ -356,11 +356,39 @@ public enum AgentUsageFormatter {
 
         let resetPercent = resetRemainingPercent(for: snapshot, now: now)
         let resetText = snapshot.resetAt.map { resetTimeText($0, timeZone: timeZone) }
+        let resetPrefix = [
+            snapshot.provider.displayName,
+            segmentLimitPrefix(for: snapshot.windowKind),
+            "초기화 까지 \(resetPercent)%"
+        ]
+            .compactMap { $0 }
+            .joined(separator: " ")
+
         if let resetText {
-            return "\(snapshot.provider.displayName) \(snapshot.windowKind.limitLabel) · 초기화 \(resetPercent)% · \(resetText)"
+            return "\(resetPrefix) · \(resetText)"
         }
 
-        return "\(snapshot.provider.displayName) \(snapshot.windowKind.limitLabel) · 초기화 \(resetPercent)%"
+        return resetPrefix
+    }
+
+    private static func secondaryResetText(for windowKind: AgentUsageWindowKind, resetText: String?) -> String? {
+        switch (windowKind, resetText) {
+        case (.fiveHour, let resetText):
+            return resetText
+        case (.weekly, let resetText?):
+            return "\(windowKind.limitLabel) · \(resetText)"
+        case (.weekly, nil):
+            return windowKind.limitLabel
+        }
+    }
+
+    private static func segmentLimitPrefix(for windowKind: AgentUsageWindowKind) -> String? {
+        switch windowKind {
+        case .fiveHour:
+            return nil
+        case .weekly:
+            return windowKind.limitLabel
+        }
     }
 
     private static func isLimitedAndDisplayable(

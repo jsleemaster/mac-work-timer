@@ -172,7 +172,7 @@ final class AgentUsageTests: XCTestCase {
 
         let line = AgentUsageFormatter.compactLine([snapshot], now: now, timeZone: calendar.timeZone)
 
-        XCTAssertEqual(line, "Codex 5시간 제한 · 초기화 21% · 14:47")
+        XCTAssertEqual(line, "Codex 초기화 까지 21% · 14:47")
     }
 
     func testCompactLineHidesStaleProviderWhenNoLimitIsHit() throws {
@@ -238,8 +238,8 @@ final class AgentUsageTests: XCTestCase {
 
         XCTAssertEqual(cards.first?.provider, .claude)
         XCTAssertEqual(cards.first?.remainingPercent, 2)
-        XCTAssertEqual(cards.first?.primaryText, "초기화 2%")
-        XCTAssertEqual(cards.first?.secondaryText, "5시간 제한 · 14:40")
+        XCTAssertEqual(cards.first?.primaryText, "초기화 까지 2%")
+        XCTAssertEqual(cards.first?.secondaryText, "14:40")
     }
 
     func testCompactLineKeepsStaleStatusLineVisibleWhenResetIsStillFuture() throws {
@@ -262,7 +262,7 @@ final class AgentUsageTests: XCTestCase {
             freshnessInterval: 30 * 60
         )
 
-        XCTAssertEqual(line, "Claude 5시간 제한 · 초기화 2% · 14:40")
+        XCTAssertEqual(line, "Claude 초기화 까지 2% · 14:40")
     }
 
     func testUsageCardsHideProviderWhenNoLimitIsHit() throws {
@@ -302,8 +302,8 @@ final class AgentUsageTests: XCTestCase {
             AgentUsageCard(
                 provider: .claude,
                 remainingPercent: 19,
-                primaryText: "초기화 19%",
-                secondaryText: "5시간 제한 · 14:40",
+                primaryText: "초기화 까지 19%",
+                secondaryText: "14:40",
                 resetAt: reset,
                 isResetDominant: true
             )

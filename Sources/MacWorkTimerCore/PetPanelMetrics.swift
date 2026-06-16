@@ -1,11 +1,11 @@
 import Foundation
 
 public enum PetPanelMetrics {
-    public static let width: Double = 258
+    public static let width: Double = 330
     public static let height: Double = 188
     public static let labelMaxWidth: Double = 188
     public static let agentUsageGridColumnCount: Int = 2
-    public static let agentUsageGridColumnWidth: Double = 72
+    public static let agentUsageGridColumnWidth: Double = 96
     public static let agentUsageGridSpacing: Double = 6
     public static let agentUsageGridWidth: Double = (agentUsageGridColumnWidth * 2) + agentUsageGridSpacing
     public static let agentUsagePrimaryFontSize: Double = 15.5
@@ -13,8 +13,8 @@ public enum PetPanelMetrics {
     public static let agentUsageSecondaryFontSize: Double = 10.5
     public static let agentUsageProviderFontSize: Double = 7.4
     public static let agentUsageMeterHeight: Double = 7
-    public static let agentUsageSpriteOffsetX: Double = -70
-    public static let agentUsageGridOffsetX: Double = 47
+    public static let agentUsageSpriteOffsetX: Double = -86
+    public static let agentUsageGridOffsetX: Double = 62
     public static let agentUsageGridOffsetY: Double = 74
     public static let singleLineSpriteOffsetY: Double = 36
     public static let twoLineSpriteOffsetY: Double = 50
