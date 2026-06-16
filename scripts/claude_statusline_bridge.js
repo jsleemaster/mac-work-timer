@@ -31,18 +31,28 @@ function writeClaudeUsage(rawInput) {
     return false;
   }
 
+  const weekly = payload?.rate_limits?.weekly;
+  const rateLimits = {
+    five_hour: {
+      used_percentage: fiveHour.used_percentage,
+      resets_at: fiveHour.resets_at ?? null,
+    },
+  };
+
+  if (weekly && typeof weekly.used_percentage === "number") {
+    rateLimits.weekly = {
+      used_percentage: weekly.used_percentage,
+      resets_at: weekly.resets_at ?? null,
+    };
+  }
+
   const file = outputPath();
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(
     file,
     JSON.stringify(
       {
-        rate_limits: {
-          five_hour: {
-            used_percentage: fiveHour.used_percentage,
-            resets_at: fiveHour.resets_at ?? null,
-          },
-        },
+        rate_limits: rateLimits,
       },
       null,
       2

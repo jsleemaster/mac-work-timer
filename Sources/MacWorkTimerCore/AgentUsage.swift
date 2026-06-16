@@ -20,10 +20,25 @@ public enum AgentUsageSource: String, Codable, Equatable, Sendable {
     case claudeHudCache
 }
 
+public enum AgentUsageWindowKind: String, Codable, Equatable, Sendable {
+    case fiveHour
+    case weekly
+
+    public var limitLabel: String {
+        switch self {
+        case .fiveHour:
+            return "5시간 제한"
+        case .weekly:
+            return "주간 제한"
+        }
+    }
+}
+
 public struct AgentUsageSnapshot: Codable, Equatable, Sendable {
     public let provider: AgentUsageProvider
     public let usedPercent: Double
     public let windowMinutes: Int
+    public let windowKind: AgentUsageWindowKind
     public let resetAt: Date?
     public let recordedAt: Date
     public let planName: String?
@@ -33,6 +48,7 @@ public struct AgentUsageSnapshot: Codable, Equatable, Sendable {
         provider: AgentUsageProvider,
         usedPercent: Double,
         windowMinutes: Int,
+        windowKind: AgentUsageWindowKind = .fiveHour,
         resetAt: Date?,
         recordedAt: Date,
         planName: String?,
@@ -41,6 +57,7 @@ public struct AgentUsageSnapshot: Codable, Equatable, Sendable {
         self.provider = provider
         self.usedPercent = max(0, min(100, usedPercent))
         self.windowMinutes = windowMinutes
+        self.windowKind = windowKind
         self.resetAt = resetAt
         self.recordedAt = recordedAt
         self.planName = planName
@@ -49,6 +66,10 @@ public struct AgentUsageSnapshot: Codable, Equatable, Sendable {
 
     public var remainingPercent: Int {
         max(0, min(100, Int((100 - usedPercent).rounded())))
+    }
+
+    public var isRateLimited: Bool {
+        usedPercent >= 100
     }
 
     public func isFresh(at now: Date, freshnessInterval: TimeInterval = 30 * 60) -> Bool {
@@ -113,21 +134,61 @@ public enum CodexUsageParser {
 
     private static func snapshot(fromCodexObject object: [String: Any]) -> AgentUsageSnapshot? {
         guard let payload = object["payload"] as? [String: Any],
-              let rateLimits = payload["rate_limits"] as? [String: Any],
-              let primary = rateLimits["primary"] as? [String: Any],
-              let usedPercent = AgentUsageJSON.double(primary["used_percent"]) else {
+              let rateLimits = payload["rate_limits"] as? [String: Any] else {
             return nil
         }
 
-        let windowMinutes = AgentUsageJSON.int(primary["window_minutes"]) ?? 300
-        let resetAt = AgentUsageJSON.double(primary["resets_at"]).map(Date.init(timeIntervalSince1970:))
         let recordedAt = AgentUsageJSON.isoDate(object["timestamp"] as? String) ?? Date()
         let planName = rateLimits["plan_type"] as? String
+
+        let candidates = [
+            snapshot(
+                fromLimitObject: rateLimits["primary"] as? [String: Any],
+                windowKind: .fiveHour,
+                defaultWindowMinutes: 300,
+                recordedAt: recordedAt,
+                planName: planName
+            ),
+            snapshot(
+                fromLimitObject: rateLimits["secondary"] as? [String: Any],
+                windowKind: .weekly,
+                defaultWindowMinutes: 10_080,
+                recordedAt: recordedAt,
+                planName: planName
+            )
+        ].compactMap { $0 }
+
+        if let weeklyLimit = candidates.first(where: { $0.windowKind == .weekly && $0.isRateLimited }) {
+            return weeklyLimit
+        }
+
+        if let fiveHourLimit = candidates.first(where: { $0.windowKind == .fiveHour && $0.isRateLimited }) {
+            return fiveHourLimit
+        }
+
+        return candidates.first { $0.windowKind == .fiveHour } ?? candidates.first
+    }
+
+    private static func snapshot(
+        fromLimitObject object: [String: Any]?,
+        windowKind: AgentUsageWindowKind,
+        defaultWindowMinutes: Int,
+        recordedAt: Date,
+        planName: String?
+    ) -> AgentUsageSnapshot? {
+        guard let object,
+              let usedPercent = AgentUsageJSON.double(object["used_percent"]) else {
+            return nil
+        }
+
+        let windowMinutes = AgentUsageJSON.int(object["window_minutes"]) ?? defaultWindowMinutes
+        let resetAt = AgentUsageJSON.date(object["resets_at"])
 
         return AgentUsageSnapshot(
             provider: .codex,
             usedPercent: usedPercent,
             windowMinutes: windowMinutes,
+            windowKind: windowKind,
             resetAt: resetAt,
             recordedAt: recordedAt,
             planName: planName,
@@ -139,20 +200,62 @@ public enum CodexUsageParser {
 public enum ClaudeUsageParser {
     public static func snapshot(fromStatusLineJSON json: String, recordedAt: Date = Date()) -> AgentUsageSnapshot? {
         guard let object = AgentUsageJSON.object(from: json),
-              let rateLimits = object["rate_limits"] as? [String: Any],
-              let fiveHour = rateLimits["five_hour"] as? [String: Any],
-              let usedPercent = AgentUsageJSON.double(fiveHour["used_percentage"]) else {
+              let rateLimits = object["rate_limits"] as? [String: Any] else {
+            return nil
+        }
+
+        let candidates = [
+            snapshot(
+                fromLimitObject: rateLimits["five_hour"] as? [String: Any],
+                windowKind: .fiveHour,
+                defaultWindowMinutes: 300,
+                recordedAt: recordedAt,
+                planName: nil,
+                source: .claudeStatusLine
+            ),
+            snapshot(
+                fromLimitObject: rateLimits["weekly"] as? [String: Any],
+                windowKind: .weekly,
+                defaultWindowMinutes: 10_080,
+                recordedAt: recordedAt,
+                planName: nil,
+                source: .claudeStatusLine
+            )
+        ].compactMap { $0 }
+
+        if let weeklyLimit = candidates.first(where: { $0.windowKind == .weekly && $0.isRateLimited }) {
+            return weeklyLimit
+        }
+
+        if let fiveHourLimit = candidates.first(where: { $0.windowKind == .fiveHour && $0.isRateLimited }) {
+            return fiveHourLimit
+        }
+
+        return candidates.first { $0.windowKind == .fiveHour } ?? candidates.first
+    }
+
+    private static func snapshot(
+        fromLimitObject object: [String: Any]?,
+        windowKind: AgentUsageWindowKind,
+        defaultWindowMinutes: Int,
+        recordedAt: Date,
+        planName: String?,
+        source: AgentUsageSource
+    ) -> AgentUsageSnapshot? {
+        guard let object,
+              let usedPercent = AgentUsageJSON.double(object["used_percentage"]) else {
             return nil
         }
 
         return AgentUsageSnapshot(
             provider: .claude,
             usedPercent: usedPercent,
-            windowMinutes: 300,
-            resetAt: AgentUsageJSON.date(fiveHour["resets_at"]),
+            windowMinutes: AgentUsageJSON.int(object["window_minutes"]) ?? defaultWindowMinutes,
+            windowKind: windowKind,
+            resetAt: AgentUsageJSON.date(object["resets_at"]),
             recordedAt: recordedAt,
-            planName: nil,
-            source: .claudeStatusLine
+            planName: planName,
+            source: source
         )
     }
 
@@ -167,6 +270,7 @@ public enum ClaudeUsageParser {
             provider: .claude,
             usedPercent: usedPercent,
             windowMinutes: 300,
+            windowKind: .fiveHour,
             resetAt: AgentUsageJSON.date(data["fiveHourResetAt"]),
             recordedAt: modifiedAt,
             planName: data["planName"] as? String,
@@ -189,11 +293,11 @@ public enum AgentUsageFormatter {
 
         return orderedProviders.compactMap { provider in
             guard let snapshot = newestByProvider[provider],
-                  isDisplayable(snapshot, now: now, freshnessInterval: freshnessInterval) else {
+                  isLimitedAndDisplayable(snapshot, now: now, freshnessInterval: freshnessInterval) else {
                 return nil
             }
 
-            return card(for: snapshot, timeZone: timeZone)
+            return card(for: snapshot, now: now, timeZone: timeZone)
         }
     }
 
@@ -224,25 +328,19 @@ public enum AgentUsageFormatter {
     }
 
     private static func card(for snapshot: AgentUsageSnapshot, timeZone: TimeZone) -> AgentUsageCard {
-        let resetText = snapshot.resetAt.map { resetTimeText($0, timeZone: timeZone) }
-        if snapshot.usedPercent >= 100 {
-            return AgentUsageCard(
-                provider: snapshot.provider,
-                remainingPercent: 0,
-                primaryText: resetText.map { "리셋 \($0)" } ?? "리셋 대기",
-                secondaryText: "0%",
-                resetAt: snapshot.resetAt,
-                isResetDominant: true
-            )
-        }
+        card(for: snapshot, now: Date(), timeZone: timeZone)
+    }
 
+    private static func card(for snapshot: AgentUsageSnapshot, now: Date, timeZone: TimeZone) -> AgentUsageCard {
+        let resetText = snapshot.resetAt.map { resetTimeText($0, timeZone: timeZone) }
+        let resetPercent = resetRemainingPercent(for: snapshot, now: now)
         return AgentUsageCard(
             provider: snapshot.provider,
-            remainingPercent: snapshot.remainingPercent,
-            primaryText: "\(snapshot.remainingPercent)%",
-            secondaryText: resetText,
+            remainingPercent: resetPercent,
+            primaryText: "초기화 \(resetPercent)%",
+            secondaryText: resetText.map { "\(snapshot.windowKind.limitLabel) · \($0)" } ?? snapshot.windowKind.limitLabel,
             resetAt: snapshot.resetAt,
-            isResetDominant: false
+            isResetDominant: true
         )
     }
 
@@ -251,31 +349,29 @@ public enum AgentUsageFormatter {
         now: Date,
         timeZone: TimeZone,
         freshnessInterval: TimeInterval
-    ) -> String {
-        guard isDisplayable(snapshot, now: now, freshnessInterval: freshnessInterval) else {
-            return "\(snapshot.provider.displayName) 대기"
+    ) -> String? {
+        guard isLimitedAndDisplayable(snapshot, now: now, freshnessInterval: freshnessInterval) else {
+            return nil
         }
 
+        let resetPercent = resetRemainingPercent(for: snapshot, now: now)
         let resetText = snapshot.resetAt.map { resetTimeText($0, timeZone: timeZone) }
-        if snapshot.usedPercent >= 100 {
-            if let resetText {
-                return "\(snapshot.provider.displayName) 0% · 리셋 \(resetText)"
-            }
-            return "\(snapshot.provider.displayName) 0%"
-        }
-
         if let resetText {
-            return "\(snapshot.provider.displayName) \(snapshot.remainingPercent)% · \(resetText)"
+            return "\(snapshot.provider.displayName) \(snapshot.windowKind.limitLabel) · 초기화 \(resetPercent)% · \(resetText)"
         }
 
-        return "\(snapshot.provider.displayName) \(snapshot.remainingPercent)%"
+        return "\(snapshot.provider.displayName) \(snapshot.windowKind.limitLabel) · 초기화 \(resetPercent)%"
     }
 
-    private static func isDisplayable(
+    private static func isLimitedAndDisplayable(
         _ snapshot: AgentUsageSnapshot,
         now: Date,
         freshnessInterval: TimeInterval
     ) -> Bool {
+        guard snapshot.isRateLimited else {
+            return false
+        }
+
         if snapshot.isFresh(at: now, freshnessInterval: freshnessInterval) {
             return true
         }
@@ -290,6 +386,19 @@ public enum AgentUsageFormatter {
         case .claudeHudCache:
             return false
         }
+    }
+
+    private static func resetRemainingPercent(for snapshot: AgentUsageSnapshot, now: Date) -> Int {
+        guard let resetAt = snapshot.resetAt,
+              resetAt > now,
+              snapshot.windowMinutes > 0 else {
+            return 0
+        }
+
+        let total = TimeInterval(snapshot.windowMinutes * 60)
+        let remaining = resetAt.timeIntervalSince(now)
+        let ratio = max(0, min(1, remaining / total))
+        return max(1, min(100, Int(ceil(ratio * 100))))
     }
 
     private static func resetTimeText(_ date: Date, timeZone: TimeZone) -> String {

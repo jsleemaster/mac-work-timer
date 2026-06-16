@@ -383,18 +383,6 @@ private struct AgentUsageCardBadge: View {
         card.provider.displayName
     }
 
-    private var resetTimeText: String? {
-        guard card.isResetDominant else {
-            return nil
-        }
-
-        if card.primaryText.hasPrefix("리셋 ") {
-            return String(card.primaryText.dropFirst("리셋 ".count))
-        }
-
-        return card.primaryText
-    }
-
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .firstTextBaseline, spacing: 4) {
@@ -415,17 +403,11 @@ private struct AgentUsageCardBadge: View {
             }
 
             if card.isResetDominant {
-                HStack(alignment: .firstTextBaseline, spacing: 3) {
-                    Text("리셋")
-                        .font(.system(size: CGFloat(PetPanelMetrics.agentUsageProviderFontSize), weight: .bold, design: .rounded))
-                        .foregroundStyle(accent.opacity(0.74))
-
-                    Text(resetTimeText ?? card.primaryText)
-                        .font(.system(size: CGFloat(PetPanelMetrics.agentUsageResetPrimaryFontSize), weight: .heavy, design: .rounded))
-                        .foregroundStyle(accent)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.72)
-                }
+                Text(card.primaryText)
+                    .font(.system(size: CGFloat(PetPanelMetrics.agentUsageResetPrimaryFontSize), weight: .heavy, design: .rounded))
+                    .foregroundStyle(accent)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
             } else {
                 Text(card.primaryText)
                     .font(.system(size: CGFloat(PetPanelMetrics.agentUsagePrimaryFontSize), weight: .heavy, design: .rounded))

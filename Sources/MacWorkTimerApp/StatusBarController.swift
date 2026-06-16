@@ -125,7 +125,7 @@ final class StatusBarController: NSObject, NSMenuDelegate {
         }
         if let agentUsageLine = model.agentUsageLine {
             agentUsageItem.isHidden = false
-            agentUsageItem.title = "AI 사용량 \(agentUsageLine)"
+            agentUsageItem.title = "AI 제한 \(agentUsageLine)"
         } else {
             agentUsageItem.isHidden = true
             agentUsageItem.title = ""

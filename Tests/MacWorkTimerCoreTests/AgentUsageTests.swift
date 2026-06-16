@@ -20,9 +20,25 @@ final class AgentUsageTests: XCTestCase {
         XCTAssertEqual(snapshot.usedPercent, 8)
         XCTAssertEqual(snapshot.remainingPercent, 92)
         XCTAssertEqual(snapshot.windowMinutes, 300)
+        XCTAssertEqual(snapshot.windowKind, .fiveHour)
         XCTAssertEqual(snapshot.resetAt, Date(timeIntervalSince1970: 1_781_588_855))
         XCTAssertEqual(snapshot.planName, "pro")
         XCTAssertEqual(snapshot.source, .codexSessionLog)
+    }
+
+    func testCodexParserPrefersLimitedWeeklySecondaryWindow() throws {
+        let jsonl = """
+        {"timestamp":"2026-06-16T04:41:19.153Z","type":"event_msg","payload":{"rate_limits":{"primary":{"used_percent":12.0,"window_minutes":300,"resets_at":1781588855},"secondary":{"used_percent":100.0,"window_minutes":10080,"resets_at":1781744486},"plan_type":"pro"}}}
+        """
+
+        let snapshot = try XCTUnwrap(CodexUsageParser.snapshot(fromJSONL: jsonl))
+
+        XCTAssertEqual(snapshot.provider, .codex)
+        XCTAssertEqual(snapshot.usedPercent, 100)
+        XCTAssertEqual(snapshot.remainingPercent, 0)
+        XCTAssertEqual(snapshot.windowMinutes, 10080)
+        XCTAssertEqual(snapshot.windowKind, .weekly)
+        XCTAssertEqual(snapshot.resetAt, Date(timeIntervalSince1970: 1_781_744_486))
     }
 
     func testClaudeStatusLineParserReadsFiveHourUsage() throws {
@@ -44,8 +60,32 @@ final class AgentUsageTests: XCTestCase {
         XCTAssertEqual(snapshot.usedPercent, 54)
         XCTAssertEqual(snapshot.remainingPercent, 46)
         XCTAssertEqual(snapshot.windowMinutes, 300)
+        XCTAssertEqual(snapshot.windowKind, .fiveHour)
         XCTAssertEqual(resetAt.timeIntervalSince1970, 1_781_600_400.157, accuracy: 0.001)
         XCTAssertEqual(snapshot.source, .claudeStatusLine)
+    }
+
+    func testClaudeStatusLineParserPrefersLimitedWeeklyWindow() throws {
+        let json = """
+        {
+          "rate_limits": {
+            "five_hour": {
+              "used_percentage": 54,
+              "resets_at": "2026-06-16T09:00:00.157Z"
+            },
+            "weekly": {
+              "used_percentage": 100,
+              "resets_at": "2026-06-18T09:00:00.000Z"
+            }
+          }
+        }
+        """
+
+        let snapshot = try XCTUnwrap(ClaudeUsageParser.snapshot(fromStatusLineJSON: json))
+
+        XCTAssertEqual(snapshot.usedPercent, 100)
+        XCTAssertEqual(snapshot.windowMinutes, 10080)
+        XCTAssertEqual(snapshot.windowKind, .weekly)
     }
 
     func testClaudeStatusLineParserAcceptsNumericResetTimestamp() throws {
@@ -88,7 +128,7 @@ final class AgentUsageTests: XCTestCase {
         XCTAssertEqual(snapshot.source, .claudeHudCache)
     }
 
-    func testCompactLineFormatsFreshRemainingPercentAndResetTime() throws {
+    func testCompactLineHidesFreshUsageWhenNoLimitIsHit() throws {
         let now = try XCTUnwrap(DateComponents(calendar: calendar, timeZone: calendar.timeZone, year: 2026, month: 6, day: 16, hour: 13, minute: 45).date)
         let reset = try XCTUnwrap(DateComponents(calendar: calendar, timeZone: calendar.timeZone, year: 2026, month: 6, day: 16, hour: 14, minute: 47).date)
         let snapshots = [
@@ -114,10 +154,10 @@ final class AgentUsageTests: XCTestCase {
 
         let line = AgentUsageFormatter.compactLine(snapshots, now: now, timeZone: calendar.timeZone)
 
-        XCTAssertEqual(line, "Codex 93% · 14:47 / Claude 46% · 14:47")
+        XCTAssertNil(line)
     }
 
-    func testCompactLineShowsResetLabelWhenUsageIsFull() throws {
+    func testCompactLineShowsLimitAndResetRemainingPercentWhenUsageIsFull() throws {
         let now = try XCTUnwrap(DateComponents(calendar: calendar, timeZone: calendar.timeZone, year: 2026, month: 6, day: 16, hour: 13, minute: 45).date)
         let reset = try XCTUnwrap(DateComponents(calendar: calendar, timeZone: calendar.timeZone, year: 2026, month: 6, day: 16, hour: 14, minute: 47).date)
         let snapshot = AgentUsageSnapshot(
@@ -132,10 +172,10 @@ final class AgentUsageTests: XCTestCase {
 
         let line = AgentUsageFormatter.compactLine([snapshot], now: now, timeZone: calendar.timeZone)
 
-        XCTAssertEqual(line, "Codex 0% · 리셋 14:47")
+        XCTAssertEqual(line, "Codex 5시간 제한 · 초기화 21% · 14:47")
     }
 
-    func testCompactLineMarksStaleProviderAsWaiting() throws {
+    func testCompactLineHidesStaleProviderWhenNoLimitIsHit() throws {
         let now = try XCTUnwrap(DateComponents(calendar: calendar, timeZone: calendar.timeZone, year: 2026, month: 6, day: 16, hour: 13, minute: 45).date)
         let recordedAt = now.addingTimeInterval(-31 * 60)
         let reset = now.addingTimeInterval(60 * 60)
@@ -151,7 +191,7 @@ final class AgentUsageTests: XCTestCase {
 
         let line = AgentUsageFormatter.compactLine([snapshot], now: now, timeZone: calendar.timeZone, freshnessInterval: 30 * 60)
 
-        XCTAssertEqual(line, "Claude 대기")
+        XCTAssertNil(line)
     }
 
     func testUsageCardsHideMissingAndStaleProviders() throws {
@@ -197,7 +237,9 @@ final class AgentUsageTests: XCTestCase {
         )
 
         XCTAssertEqual(cards.first?.provider, .claude)
-        XCTAssertEqual(cards.first?.primaryText, "리셋 14:40")
+        XCTAssertEqual(cards.first?.remainingPercent, 2)
+        XCTAssertEqual(cards.first?.primaryText, "초기화 2%")
+        XCTAssertEqual(cards.first?.secondaryText, "5시간 제한 · 14:40")
     }
 
     func testCompactLineKeepsStaleStatusLineVisibleWhenResetIsStillFuture() throws {
@@ -220,10 +262,10 @@ final class AgentUsageTests: XCTestCase {
             freshnessInterval: 30 * 60
         )
 
-        XCTAssertEqual(line, "Claude 0% · 리셋 14:40")
+        XCTAssertEqual(line, "Claude 5시간 제한 · 초기화 2% · 14:40")
     }
 
-    func testUsageCardsShowRemainingPercentAndResetTime() throws {
+    func testUsageCardsHideProviderWhenNoLimitIsHit() throws {
         let now = try XCTUnwrap(DateComponents(calendar: calendar, timeZone: calendar.timeZone, year: 2026, month: 6, day: 16, hour: 13, minute: 45).date)
         let reset = try XCTUnwrap(DateComponents(calendar: calendar, timeZone: calendar.timeZone, year: 2026, month: 6, day: 16, hour: 14, minute: 47).date)
         let snapshot = AgentUsageSnapshot(
@@ -238,19 +280,10 @@ final class AgentUsageTests: XCTestCase {
 
         let cards = AgentUsageFormatter.cards([snapshot], now: now, timeZone: calendar.timeZone)
 
-        XCTAssertEqual(cards, [
-            AgentUsageCard(
-                provider: .codex,
-                remainingPercent: 86,
-                primaryText: "86%",
-                secondaryText: "14:47",
-                resetAt: reset,
-                isResetDominant: false
-            )
-        ])
+        XCTAssertTrue(cards.isEmpty)
     }
 
-    func testUsageCardsPrioritizeResetWhenUsageIsFull() throws {
+    func testUsageCardsPrioritizeResetRemainingPercentWhenUsageIsFull() throws {
         let now = try XCTUnwrap(DateComponents(calendar: calendar, timeZone: calendar.timeZone, year: 2026, month: 6, day: 16, hour: 13, minute: 45).date)
         let reset = try XCTUnwrap(DateComponents(calendar: calendar, timeZone: calendar.timeZone, year: 2026, month: 6, day: 16, hour: 14, minute: 40).date)
         let snapshot = AgentUsageSnapshot(
@@ -268,9 +301,9 @@ final class AgentUsageTests: XCTestCase {
         XCTAssertEqual(cards, [
             AgentUsageCard(
                 provider: .claude,
-                remainingPercent: 0,
-                primaryText: "리셋 14:40",
-                secondaryText: "0%",
+                remainingPercent: 19,
+                primaryText: "초기화 19%",
+                secondaryText: "5시간 제한 · 14:40",
                 resetAt: reset,
                 isResetDominant: true
             )
@@ -342,7 +375,7 @@ final class AgentUsageTests: XCTestCase {
             includeMissingProviders: true
         )
 
-        XCTAssertEqual(line, "Codex 93% · 14:45 / Claude 대기")
+        XCTAssertEqual(line, "Claude 대기")
     }
 
     func testFileReaderReadsCodexSessionLogsAndClaudeBridgeFile() throws {
