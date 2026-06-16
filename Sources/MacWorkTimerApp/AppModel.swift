@@ -9,47 +9,47 @@ final class AppModel: NSObject, ObservableObject {
 
     @Published private(set) var now = Date()
     @Published var state: AppState = .empty
-    @Published var userID = ""
-    @Published var password = ""
     @Published var statusMessage: String?
     @Published var launchAtLogin = false
     @Published var isLoggingIn = false
+    @Published private(set) var agentUsageSnapshots: [AgentUsageSnapshot] = []
 
     private let clock: WorkdayClock
     private let tracker: SessionTracker
     private let credentialStore: KeychainCredentialStore
-    private let gwClient: GWClient
+    private let activityStartProvider: SystemActivityStartProvider
+    private let webSessionProbe = GWWebSessionProbe()
     private let notificationService: NotificationService
     private let loginItemsController: LoginItemsController
+    private let agentUsageReader: AgentUsageFileReader
     private var timer: Timer?
+    private var lastAgentUsageRefreshAt: Date?
     private var notificationObservers: [NSObjectProtocol] = []
-    private var didLoadStoredCredentials = false
-    private var isLoadingStoredCredentials = false
 
     override init() {
         let clock = WorkdayClock()
         let tracker = SessionTracker(clock: clock)
-        let credentialStore = KeychainCredentialStore()
+        let credentialStore = KeychainCredentialStore(account: GWConfiguration.credentialAccount)
 
         self.clock = clock
         self.tracker = tracker
         self.credentialStore = credentialStore
-        self.gwClient = GWClient(credentialStore: credentialStore)
+        self.activityStartProvider = SystemActivityStartProvider(clock: clock)
         self.notificationService = NotificationService()
         self.loginItemsController = LoginItemsController()
+        self.agentUsageReader = AgentUsageFileReader()
         self.launchAtLogin = loginItemsController.isEnabled
 
         super.init()
 
         loadStoredState()
+        refreshAgentUsage(force: true)
         startClock()
         observeSystemActivity()
 
         Task {
             _ = await notificationService.requestAuthorization()
-            if currentSession == nil {
-                loadStoredCredentialsInBackground(refreshAfterLoad: true)
-            }
+            refreshAttendance()
             await scheduleOrDeliverNotificationIfNeeded()
         }
     }
@@ -73,10 +73,14 @@ final class AppModel: NSObject, ObservableObject {
     }
 
     var progress: Double {
-        guard let elapsed else {
+        guard let elapsed, let currentSession else {
             return 0
         }
-        return min(1, max(0, elapsed / WorkSession.workdayDuration))
+        return min(1, max(0, elapsed / currentSession.workdayDuration))
+    }
+
+    var workdayMode: WorkdayMode {
+        state.workdayMode(on: now, clock: clock)
     }
 
     func petRevealDisplay(availablePetIDs: [String]) -> PetRevealDisplay {
@@ -103,6 +107,18 @@ final class AppModel: NSObject, ObservableObject {
         return MenuBarStatusFormatter.title(remaining: remaining)
     }
 
+    var agentUsageLine: String? {
+        AgentUsageFormatter.compactLine(
+            agentUsageSnapshots,
+            now: now,
+            includeMissingProviders: false
+        )
+    }
+
+    var agentUsageCards: [AgentUsageCard] {
+        AgentUsageFormatter.cards(agentUsageSnapshots, now: now)
+    }
+
     func loadStoredState() {
         do {
             state = try tracker.load()
@@ -112,35 +128,18 @@ final class AppModel: NSObject, ObservableObject {
         }
     }
 
-    func login() {
-        do {
-            let trimmedUserID = userID.trimmingCharacters(in: .whitespacesAndNewlines)
-            try credentialStore.saveCredentials(GWCredentials(userID: trimmedUserID, password: password))
-            userID = trimmedUserID
-            refreshAttendance()
-        } catch {
-            statusMessage = error.localizedDescription
-        }
-    }
-
     func refreshAttendance() {
-        if currentCredentials == nil && !didLoadStoredCredentials {
-            loadStoredCredentialsInBackground(refreshAfterLoad: true)
-            statusMessage = currentSession == nil ? "저장된 GW 계정을 읽는 중입니다." : nil
-            return
-        }
-
-        guard let credentials = currentCredentials else {
-            statusMessage = "GW 계정으로 먼저 로그인하세요."
-            return
-        }
+        startOrResumeLocalSession()
 
         let hasStoredSession = currentSession != nil
         state.gwStatus = .checking
         isLoggingIn = true
+        statusMessage = hasStoredSession ? nil : "GW 로그인 상태를 확인 중입니다."
 
-        Task {
-            let status = await gwClient.refreshTodayStatus(credentials: credentials)
+        webSessionProbe.refresh { [weak self] status in
+            guard let self else {
+                return
+            }
             do {
                 switch status {
                 case .attendance(let record):
@@ -155,19 +154,32 @@ final class AppModel: NSObject, ObservableObject {
                 statusMessage = hasStoredSession ? nil : error.localizedDescription
             }
             isLoggingIn = false
-            await scheduleOrDeliverNotificationIfNeeded()
+            Task {
+                await scheduleOrDeliverNotificationIfNeeded()
+            }
+        }
+    }
+
+    private func startOrResumeLocalSession() {
+        do {
+            state = try tracker.startOrResume(now: now, preferredStart: activityStartProvider.preferredStart(for: now))
+        } catch {
+            statusMessage = error.localizedDescription
         }
     }
 
     func applyAttendanceText(_ text: String) {
-        guard let record = AttendanceRecordParser.parse(text) else {
-            statusMessage = "로그인 후 출근 기록을 찾지 못했습니다."
-            return
-        }
+        let status = GWWebSessionInterpreter.status(from: text)
 
         do {
-            state = try tracker.applyAttendance(record)
-            statusMessage = nil
+            switch status {
+            case .attendance(let record):
+                state = try tracker.applyAttendance(record)
+                statusMessage = nil
+            default:
+                state = try tracker.updateGWStatus(status)
+                statusMessage = message(for: status)
+            }
             Task {
                 await scheduleOrDeliverNotificationIfNeeded()
             }
@@ -179,8 +191,6 @@ final class AppModel: NSObject, ObservableObject {
     func logout() {
         do {
             try credentialStore.deleteCredentials()
-            userID = ""
-            password = ""
             state = try tracker.clearSessionAndGWStatus()
             statusMessage = nil
         } catch {
@@ -199,65 +209,17 @@ final class AppModel: NSObject, ObservableObject {
         }
     }
 
-    private func loadCredentialsForEditing() {
-        guard let credentials = try? credentialStore.loadCredentials() else {
-            return
-        }
-        userID = credentials.userID
-        password = credentials.password
-    }
-
-    private func loadStoredCredentialsInBackground(refreshAfterLoad: Bool) {
-        guard !isLoadingStoredCredentials else {
-            return
-        }
-
-        isLoadingStoredCredentials = true
-        let store = credentialStore
-
-        Task { [weak self, store] in
-            let result = await Task.detached {
-                Result {
-                    try store.loadCredentials()
-                }
-            }.value
-
-            guard let self else {
-                return
+    func setWorkdayMode(_ mode: WorkdayMode) {
+        let workDate = currentSession?.workDate ?? clock.workDate(for: now)
+        do {
+            state = try tracker.setWorkdayMode(mode, for: workDate)
+            statusMessage = "\(mode.title) 기준으로 계산합니다."
+            Task {
+                await scheduleOrDeliverNotificationIfNeeded()
             }
-
-            isLoadingStoredCredentials = false
-            didLoadStoredCredentials = true
-
-            switch result {
-            case .success(let credentials):
-                guard let credentials else {
-                    if currentSession == nil {
-                        statusMessage = "GW 계정으로 먼저 로그인하세요."
-                    }
-                    return
-                }
-
-                userID = credentials.userID
-                password = credentials.password
-                if refreshAfterLoad {
-                    refreshAttendance()
-                }
-            case .failure(let error):
-                if currentSession == nil {
-                    statusMessage = error.localizedDescription
-                }
-            }
+        } catch {
+            statusMessage = error.localizedDescription
         }
-    }
-
-    private var currentCredentials: GWCredentials? {
-        let trimmedUserID = userID.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedUserID.isEmpty, !password.isEmpty else {
-            return nil
-        }
-
-        return GWCredentials(userID: trimmedUserID, password: password)
     }
 
     private func startClock() {
@@ -272,9 +234,41 @@ final class AppModel: NSObject, ObservableObject {
 
     private func tick() {
         now = Date()
+        refreshAgentUsageIfNeeded()
         Task {
             await scheduleOrDeliverNotificationIfNeeded()
         }
+    }
+
+    private func refreshAgentUsageIfNeeded() {
+        guard let lastAgentUsageRefreshAt else {
+            refreshAgentUsage(force: true)
+            return
+        }
+
+        let nextRefreshAt = AgentUsageRefreshPolicy.nextRefreshAt(
+            snapshots: agentUsageSnapshots,
+            lastRefreshAt: lastAgentUsageRefreshAt
+        )
+
+        guard now >= nextRefreshAt else {
+            return
+        }
+
+        refreshAgentUsage(force: true)
+    }
+
+    private func refreshAgentUsage(force: Bool) {
+        if !force, let lastAgentUsageRefreshAt, now.timeIntervalSince(lastAgentUsageRefreshAt) < 60 {
+            return
+        }
+
+        lastAgentUsageRefreshAt = now
+        agentUsageSnapshots = agentUsageReader.readSnapshots(
+            codexSessionsRoot: AgentUsagePaths.codexSessionsRoot,
+            claudeStatusLineBridgeURL: AgentUsagePaths.claudeStatusLineBridgeURL,
+            claudeHudCacheURL: AgentUsagePaths.claudeHudCacheURL
+        )
     }
 
     private func observeSystemActivity() {
@@ -297,6 +291,7 @@ final class AppModel: NSObject, ObservableObject {
             NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
                 Task { @MainActor in
                     self?.loadStoredState()
+                    self?.refreshAgentUsage(force: true)
                 }
             }
         )
@@ -339,6 +334,27 @@ final class AppModel: NSObject, ObservableObject {
             return message
         }
     }
+}
+
+private enum AgentUsagePaths {
+    private static let home = FileManager.default.homeDirectoryForCurrentUser
+
+    static let codexSessionsRoot = home
+        .appendingPathComponent(".codex", isDirectory: true)
+        .appendingPathComponent("sessions", isDirectory: true)
+
+    static let claudeStatusLineBridgeURL = home
+        .appendingPathComponent("Library", isDirectory: true)
+        .appendingPathComponent("Application Support", isDirectory: true)
+        .appendingPathComponent("Mac Work Timer", isDirectory: true)
+        .appendingPathComponent("agent-usage", isDirectory: true)
+        .appendingPathComponent("claude.json")
+
+    static let claudeHudCacheURL = home
+        .appendingPathComponent(".claude", isDirectory: true)
+        .appendingPathComponent("plugins", isDirectory: true)
+        .appendingPathComponent("claude-hud", isDirectory: true)
+        .appendingPathComponent(".usage-cache.json")
 }
 
 enum DateFormatting {

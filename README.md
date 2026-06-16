@@ -7,6 +7,7 @@ macOS menu bar app for tracking a 9-hour workday from the GW attendance check-in
 - Reads the GW check-in record after web login.
 - Calculates the target time as check-in + 9 hours using wall-clock elapsed time.
 - Shows remaining time in the menu bar and a normal SwiftUI window.
+- Shows local Codex/Claude 5-hour usage remaining when available.
 - Stores app state in `~/Library/Application Support/Mac Work Timer/state.json`.
 - Stores GW credentials only in macOS Keychain.
 - Tries read-only GW login/status refresh with `URLSession`; if 2FA or policy blocks it, opens GW in an embedded `WKWebView`.
@@ -60,6 +61,24 @@ Local-only personal pet images can also be stored outside the repository at `~/M
 - `sources.json`
 
 When all three PNG files exist, the app treats them as one local-only evolving pet and keeps those files out of GitHub and public release builds.
+
+## AI usage indicator
+
+The pet label and menu dropdown can show Codex and Claude 5-hour usage remaining:
+
+- Codex is read from local `~/.codex/sessions/**/*.jsonl` rate-limit events.
+- Claude is read from `~/Library/Application Support/Mac Work Timer/agent-usage/claude.json` when a Claude Code status line bridge writes it.
+- If the bridge is not configured, the app also checks `~/.claude/plugins/claude-hud/.usage-cache.json` and marks stale values as waiting.
+
+The app only reads rate-limit fields such as percentage and reset time. It does not store prompts, responses, API keys, tokens, or environment variables.
+
+Optional Claude Code bridge:
+
+```bash
+scripts/claude_statusline_bridge.js
+```
+
+The bridge reads Claude Code status-line JSON from stdin and writes only the five-hour usage percentage/reset timestamp to the app support folder. If you already use a status-line command, call the bridge with `--forward "<existing command>"` so the existing status line still renders.
 
 ## GW inspection
 

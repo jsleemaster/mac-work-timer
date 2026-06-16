@@ -6,7 +6,7 @@ import SwiftUI
 final class PetWindowController {
     static let shared = PetWindowController()
 
-    private let size = NSSize(width: 108, height: 124)
+    private let size = NSSize(width: PetPanelMetrics.width, height: PetPanelMetrics.height)
     private var panel: NSPanel?
 
     var isVisible: Bool {
@@ -73,7 +73,15 @@ final class PetWindowController {
     }
 
     private func placementVisibleFrame() -> NSRect {
-        (NSScreen.main ?? NSScreen.screens.first)?.visibleFrame
+        let mouseLocation = NSEvent.mouseLocation
+        let mouseScreen = NSScreen.screens.first { screen in
+            NSMouseInRect(mouseLocation, screen.frame, false)
+        }
+        let primaryScreen = NSScreen.screens.first { screen in
+            screen.frame.origin == .zero
+        }
+
+        return (primaryScreen ?? NSScreen.main ?? mouseScreen ?? NSScreen.screens.first)?.visibleFrame
             ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
     }
 }

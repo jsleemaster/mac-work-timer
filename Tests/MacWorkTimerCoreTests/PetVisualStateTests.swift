@@ -75,6 +75,16 @@ final class PetVisualStateTests: XCTestCase {
         XCTAssertEqual(state.frameSetName, "working-late")
     }
 
+    func testLeaveTimeTextUsesSeoulHourAndMinute() throws {
+        let targetAt = try XCTUnwrap(DateComponents(calendar: calendar, timeZone: calendar.timeZone, year: 2026, month: 6, day: 8, hour: 18, minute: 15).date)
+
+        XCTAssertEqual(PetVisualState.leaveTimeText(targetAt: targetAt), "퇴근 18:15")
+    }
+
+    func testLeaveTimeTextIsNilWithoutTarget() {
+        XCTAssertNil(PetVisualState.leaveTimeText(targetAt: nil))
+    }
+
     func testDragStateOverridesFrameSet() throws {
         let now = try XCTUnwrap(DateComponents(calendar: calendar, timeZone: calendar.timeZone, year: 2026, month: 5, day: 21, hour: 16).date)
 

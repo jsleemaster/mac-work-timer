@@ -20,7 +20,16 @@ chmod +x "$APP_DIR/Contents/MacOS/MacWorkTimer"
 
 /usr/bin/plutil -lint "$APP_DIR/Contents/Info.plist" >/dev/null
 
-CODE_SIGN_IDENTITY="${MAC_WORK_TIMER_CODESIGN_IDENTITY:--}"
+if [ -n "${MAC_WORK_TIMER_CODESIGN_IDENTITY:-}" ]; then
+  CODE_SIGN_IDENTITY="$MAC_WORK_TIMER_CODESIGN_IDENTITY"
+else
+  CODE_SIGN_IDENTITY="$(
+    /usr/bin/security find-identity -p codesigning -v 2>/dev/null \
+      | /usr/bin/awk '/Apple Development:/ { print $2; exit }'
+  )"
+  CODE_SIGN_IDENTITY="${CODE_SIGN_IDENTITY:--}"
+fi
+
 /usr/bin/codesign --force --deep --sign "$CODE_SIGN_IDENTITY" "$APP_DIR" >/dev/null
 
 echo "$APP_DIR"

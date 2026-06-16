@@ -8,12 +8,17 @@ final class StatusBarController: NSObject, NSMenuDelegate {
     private let model: AppModel
     private let statusItem: NSStatusItem
     private let menu = NSMenu()
+    private let loginItem = NSMenuItem(title: "로그인 열기", action: #selector(openWindow), keyEquivalent: "o")
+    private let workdayModeParentItem = NSMenuItem(title: "근무 형태", action: nil, keyEquivalent: "")
+    private let workdayModeMenu = NSMenu()
     private let checkInItem = NSMenuItem()
     private let targetItem = NSMenuItem()
     private let remainingItem = NSMenuItem()
     private let progressItem = NSMenuItem()
+    private let agentUsageItem = NSMenuItem()
     private let petItem = NSMenuItem()
     private let revealPetItem = NSMenuItem()
+    private var workdayModeItems: [WorkdayMode: NSMenuItem] = [:]
     private var timer: Timer?
 
     init(model: AppModel) {
@@ -42,13 +47,14 @@ final class StatusBarController: NSObject, NSMenuDelegate {
         targetItem.isEnabled = false
         remainingItem.isEnabled = false
         progressItem.isEnabled = false
+        agentUsageItem.isEnabled = false
+        configureWorkdayModeMenu()
 
-        menu.addItem(checkInItem)
-        menu.addItem(targetItem)
         menu.addItem(remainingItem)
-        menu.addItem(progressItem)
+        menu.addItem(agentUsageItem)
         menu.addItem(.separator())
-        menu.addItem(NSMenuItem(title: "창 열기", action: #selector(openWindow), keyEquivalent: "o"))
+        menu.addItem(loginItem)
+        menu.addItem(workdayModeParentItem)
         menu.addItem(NSMenuItem(title: "출근 기록 다시 조회", action: #selector(refreshAttendance), keyEquivalent: "r"))
         petItem.action = #selector(togglePet)
         menu.addItem(petItem)
@@ -63,6 +69,20 @@ final class StatusBarController: NSObject, NSMenuDelegate {
         }
 
         statusItem.menu = menu
+    }
+
+    private func configureWorkdayModeMenu() {
+        workdayModeParentItem.submenu = workdayModeMenu
+        workdayModeMenu.removeAllItems()
+        workdayModeItems.removeAll()
+
+        for mode in WorkdayMode.allCases {
+            let item = NSMenuItem(title: mode.title, action: #selector(selectWorkdayMode(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = mode.rawValue
+            workdayModeMenu.addItem(item)
+            workdayModeItems[mode] = item
+        }
     }
 
     func menuWillOpen(_ menu: NSMenu) {
@@ -89,6 +109,9 @@ final class StatusBarController: NSObject, NSMenuDelegate {
             button.toolTip = tooltip()
         }
 
+        let hasSession = model.currentSession != nil
+        loginItem.isHidden = hasSession
+
         if let session = model.currentSession {
             checkInItem.title = "출근 \(DateFormatting.time.string(from: session.workStartAt))"
             targetItem.title = "퇴근 목표 \(DateFormatting.time.string(from: session.targetAt))"
@@ -100,6 +123,17 @@ final class StatusBarController: NSObject, NSMenuDelegate {
             remainingItem.title = "남은 시간 --"
             progressItem.title = "진행률 --"
         }
+        if let agentUsageLine = model.agentUsageLine {
+            agentUsageItem.isHidden = false
+            agentUsageItem.title = "AI 사용량 \(agentUsageLine)"
+        } else {
+            agentUsageItem.isHidden = true
+            agentUsageItem.title = ""
+        }
+
+        for (mode, item) in workdayModeItems {
+            item.state = mode == model.workdayMode ? .on : .off
+        }
 
         petItem.title = PetWindowController.shared.isVisible ? "펫 숨기기" : "펫 보이기"
     }
@@ -108,6 +142,10 @@ final class StatusBarController: NSObject, NSMenuDelegate {
         guard let session = model.currentSession else {
             return "GW 로그인 후 출근 기록을 읽습니다."
         }
+        if let usage = model.agentUsageLine {
+            return "출근 \(DateFormatting.time.string(from: session.workStartAt)) · 목표 \(DateFormatting.time.string(from: session.targetAt)) · \(usage)"
+        }
+
         return "출근 \(DateFormatting.time.string(from: session.workStartAt)) · 목표 \(DateFormatting.time.string(from: session.targetAt))"
     }
 
@@ -121,11 +159,21 @@ final class StatusBarController: NSObject, NSMenuDelegate {
     }
 
     @objc private func openWindow() {
-        MainWindowController.shared.show()
+        MainWindowController.shared.showLogin()
     }
 
     @objc private func refreshAttendance() {
         model.refreshAttendance()
+    }
+
+    @objc private func selectWorkdayMode(_ sender: NSMenuItem) {
+        guard let rawValue = sender.representedObject as? String,
+              let mode = WorkdayMode(rawValue: rawValue) else {
+            return
+        }
+
+        model.setWorkdayMode(mode)
+        update()
     }
 
     @objc private func togglePet() {

@@ -46,7 +46,7 @@ final class NotificationService {
     private func completionContent() -> UNMutableNotificationContent {
         let content = UNMutableNotificationContent()
         content.title = "퇴근 알림"
-        content.body = "8시간이 지났습니다. GW 또는 세콤 상태를 확인하세요."
+        content.body = "퇴근 목표 시간이 됐습니다. GW 또는 세콤 상태를 확인하세요."
         content.sound = .default
         return content
     }

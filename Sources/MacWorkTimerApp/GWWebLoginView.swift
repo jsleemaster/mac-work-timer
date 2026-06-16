@@ -13,7 +13,7 @@ struct GWWebLoginView: NSViewRepresentable {
         configuration.websiteDataStore = .default()
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = context.coordinator
-        webView.load(URLRequest(url: URL(string: "https://gw.example.com/gw/bizbox.do")!))
+        webView.load(URLRequest(url: GWConfiguration.bizboxURL))
         return webView
     }
 
