@@ -444,7 +444,7 @@ public enum AgentUsageRefreshPolicy {
     public static func nextRefreshAt(
         snapshots: [AgentUsageSnapshot],
         lastRefreshAt: Date,
-        defaultInterval: TimeInterval = 60,
+        defaultInterval: TimeInterval = 5 * 60,
         resetGraceInterval: TimeInterval = 5
     ) -> Date {
         let defaultRefreshAt = lastRefreshAt.addingTimeInterval(defaultInterval)
@@ -464,9 +464,17 @@ public enum AgentUsageRefreshPolicy {
 
 public struct AgentUsageFileReader {
     private let fileManager: FileManager
+    private let codexFileLimit: Int
+    private let codexTailByteLimit: UInt64
 
-    public init(fileManager: FileManager = .default) {
+    public init(
+        fileManager: FileManager = .default,
+        codexFileLimit: Int = 20,
+        codexTailByteLimit: UInt64 = 512 * 1024
+    ) {
         self.fileManager = fileManager
+        self.codexFileLimit = codexFileLimit
+        self.codexTailByteLimit = codexTailByteLimit
     }
 
     public func readSnapshots(
@@ -500,13 +508,38 @@ public struct AgentUsageFileReader {
             return (url, values.contentModificationDate ?? .distantPast)
         }
         .sorted { $0.1 > $1.1 }
-        .prefix(120)
+        .prefix(max(1, codexFileLimit))
 
         return files.compactMap { url, _ in
-            (try? String(contentsOf: url, encoding: .utf8))
+            textSuffix(from: url, maxBytes: codexTailByteLimit)
                 .flatMap(CodexUsageParser.snapshot(fromJSONL:))
         }
         .max { $0.recordedAt < $1.recordedAt }
+    }
+
+    private func textSuffix(from url: URL, maxBytes: UInt64) -> String? {
+        guard let handle = try? FileHandle(forReadingFrom: url) else {
+            return nil
+        }
+
+        defer {
+            try? handle.close()
+        }
+
+        guard let size = try? handle.seekToEnd() else {
+            return nil
+        }
+
+        let start = size > maxBytes ? size - maxBytes : 0
+        do {
+            try handle.seek(toOffset: start)
+            guard let data = try handle.readToEnd() else {
+                return nil
+            }
+            return String(decoding: data, as: UTF8.self)
+        } catch {
+            return nil
+        }
     }
 
     private func readClaudeSnapshot(bridgeURL: URL?, hudCacheURL: URL?) -> AgentUsageSnapshot? {

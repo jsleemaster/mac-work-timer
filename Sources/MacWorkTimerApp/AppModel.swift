@@ -17,6 +17,7 @@ final class AppModel: NSObject, ObservableObject {
     private let clock: WorkdayClock
     private let tracker: SessionTracker
     private let credentialStore: KeychainCredentialStore
+    private let gwClient: GWClient
     private let activityStartProvider: SystemActivityStartProvider
     private let webSessionProbe = GWWebSessionProbe()
     private let notificationService: NotificationService
@@ -24,6 +25,9 @@ final class AppModel: NSObject, ObservableObject {
     private let agentUsageReader: AgentUsageFileReader
     private var timer: Timer?
     private var lastAgentUsageRefreshAt: Date?
+    private var notificationTask: Task<Void, Never>?
+    private var lastNotificationActionKey: String?
+    private var attendanceTask: Task<Void, Never>?
     private var notificationObservers: [NSObjectProtocol] = []
 
     override init() {
@@ -34,6 +38,7 @@ final class AppModel: NSObject, ObservableObject {
         self.clock = clock
         self.tracker = tracker
         self.credentialStore = credentialStore
+        self.gwClient = GWClient(baseURL: GWConfiguration.baseURL, credentialStore: credentialStore)
         self.activityStartProvider = SystemActivityStartProvider(clock: clock)
         self.notificationService = NotificationService()
         self.loginItemsController = LoginItemsController()
@@ -50,7 +55,7 @@ final class AppModel: NSObject, ObservableObject {
         Task {
             _ = await notificationService.requestAuthorization()
             refreshAttendance()
-            await scheduleOrDeliverNotificationIfNeeded()
+            updateNotificationIfNeeded(force: true)
         }
     }
 
@@ -128,7 +133,11 @@ final class AppModel: NSObject, ObservableObject {
         }
     }
 
-    func refreshAttendance() {
+    func refreshAttendance(force: Bool = false, allowWebSessionProbe: Bool = false) {
+        guard force || !isLoggingIn else {
+            return
+        }
+
         startOrResumeLocalSession()
 
         let hasStoredSession = currentSession != nil
@@ -136,28 +145,80 @@ final class AppModel: NSObject, ObservableObject {
         isLoggingIn = true
         statusMessage = hasStoredSession ? nil : "GW 로그인 상태를 확인 중입니다."
 
-        webSessionProbe.refresh { [weak self] status in
+        attendanceTask?.cancel()
+        attendanceTask = Task { [weak self] in
             guard let self else {
                 return
             }
-            do {
-                switch status {
-                case .attendance(let record):
-                    state = try tracker.applyAttendance(record)
-                    statusMessage = nil
-                default:
-                    state = try tracker.updateGWStatus(status)
-                    statusMessage = hasStoredSession ? nil : message(for: status)
-                }
-            } catch {
-                state.gwStatus = status
-                statusMessage = hasStoredSession ? nil : error.localizedDescription
+
+            let status = await gwClient.refreshTodayStatus()
+            guard !Task.isCancelled else {
+                return
             }
-            isLoggingIn = false
-            Task {
-                await scheduleOrDeliverNotificationIfNeeded()
+
+            await MainActor.run {
+                self.handleCredentialLoginStatus(
+                    status,
+                    hasStoredSession: hasStoredSession,
+                    allowWebSessionProbe: allowWebSessionProbe
+                )
             }
         }
+    }
+
+    private func handleCredentialLoginStatus(
+        _ status: GWStatus,
+        hasStoredSession: Bool,
+        allowWebSessionProbe: Bool
+    ) {
+        switch status {
+        case .attendance, .checking, .readOnlySummary:
+            applyAttendanceStatus(status, hasStoredSession: hasStoredSession)
+        case .notConfigured, .requiresWebLogin, .failed:
+            if allowWebSessionProbe {
+                probeExistingWebSession(hasStoredSession: hasStoredSession, credentialStatus: status)
+            } else {
+                applyAttendanceStatus(status, hasStoredSession: hasStoredSession)
+            }
+        }
+    }
+
+    private func probeExistingWebSession(hasStoredSession: Bool, credentialStatus: GWStatus) {
+        webSessionProbe.refresh { [weak self] webStatus in
+            guard let self else {
+                return
+            }
+
+            let resolvedStatus: GWStatus
+            switch webStatus {
+            case .requiresWebLogin where credentialStatus != .notConfigured:
+                resolvedStatus = credentialStatus
+            default:
+                resolvedStatus = webStatus
+            }
+
+            self.applyAttendanceStatus(resolvedStatus, hasStoredSession: hasStoredSession)
+        }
+    }
+
+    private func applyAttendanceStatus(_ status: GWStatus, hasStoredSession: Bool) {
+        do {
+            switch status {
+            case .attendance(let record):
+                state = try tracker.applyAttendance(record)
+                statusMessage = nil
+            default:
+                state = try tracker.updateGWStatus(status)
+                statusMessage = hasStoredSession ? nil : message(for: status)
+            }
+        } catch {
+            state.gwStatus = status
+            statusMessage = hasStoredSession ? nil : error.localizedDescription
+        }
+
+        attendanceTask = nil
+        isLoggingIn = false
+        updateNotificationIfNeeded(force: true)
     }
 
     private func startOrResumeLocalSession() {
@@ -180,9 +241,7 @@ final class AppModel: NSObject, ObservableObject {
                 state = try tracker.updateGWStatus(status)
                 statusMessage = message(for: status)
             }
-            Task {
-                await scheduleOrDeliverNotificationIfNeeded()
-            }
+            updateNotificationIfNeeded(force: true)
         } catch {
             statusMessage = error.localizedDescription
         }
@@ -214,9 +273,7 @@ final class AppModel: NSObject, ObservableObject {
         do {
             state = try tracker.setWorkdayMode(mode, for: workDate)
             statusMessage = "\(mode.title) 기준으로 계산합니다."
-            Task {
-                await scheduleOrDeliverNotificationIfNeeded()
-            }
+            updateNotificationIfNeeded(force: true)
         } catch {
             statusMessage = error.localizedDescription
         }
@@ -235,9 +292,7 @@ final class AppModel: NSObject, ObservableObject {
     private func tick() {
         now = Date()
         refreshAgentUsageIfNeeded()
-        Task {
-            await scheduleOrDeliverNotificationIfNeeded()
-        }
+        updateNotificationIfNeeded()
     }
 
     private func refreshAgentUsageIfNeeded() {
@@ -297,23 +352,60 @@ final class AppModel: NSObject, ObservableObject {
         )
     }
 
-    private func scheduleOrDeliverNotificationIfNeeded() async {
+    private func updateNotificationIfNeeded(force: Bool = false) {
         guard let session = currentSession else {
+            lastNotificationActionKey = nil
+            notificationTask?.cancel()
+            notificationTask = nil
             return
         }
+
+        let targetKey = "\(session.workDate)|\(session.targetAt.timeIntervalSince1970)"
 
         if clock.isComplete(session, at: now) {
             guard state.notificationSentForDate != session.workDate else {
                 return
             }
 
-            await notificationService.deliverCompletionNotification(for: session)
-            do {
-                state = try tracker.markNotificationSent(for: session.workDate)
-            } catch {
-                statusMessage = error.localizedDescription
+            let actionKey = "deliver|\(targetKey)"
+            guard force || lastNotificationActionKey != actionKey else {
+                return
             }
-        } else {
+
+            lastNotificationActionKey = actionKey
+            notificationTask?.cancel()
+            notificationTask = Task { @MainActor [weak self] in
+                guard let self else {
+                    return
+                }
+
+                await notificationService.deliverCompletionNotification(for: session)
+                guard !Task.isCancelled else {
+                    return
+                }
+
+                do {
+                    state = try tracker.markNotificationSent(for: session.workDate)
+                    lastNotificationActionKey = "delivered|\(session.workDate)"
+                } catch {
+                    statusMessage = error.localizedDescription
+                }
+            }
+            return
+        }
+
+        let actionKey = "schedule|\(targetKey)"
+        guard force || lastNotificationActionKey != actionKey else {
+            return
+        }
+
+        lastNotificationActionKey = actionKey
+        notificationTask?.cancel()
+        notificationTask = Task { @MainActor [weak self] in
+            guard let self else {
+                return
+            }
+
             await notificationService.scheduleCompletionNotification(for: session, from: now)
         }
     }

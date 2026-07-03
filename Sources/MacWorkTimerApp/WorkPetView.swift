@@ -55,6 +55,30 @@ struct WorkPetView: View {
         leaveTimeText != nil
     }
 
+    private var spriteTimelineInterval: TimeInterval {
+        if case .capsuleIdle = revealDisplay {
+            return capsulePhase.frameDuration
+        }
+
+        switch dragState {
+        case .idle:
+            break
+        case .pressed, .left, .right:
+            return 0.20
+        }
+
+        switch mood {
+        case .idle, .working:
+            return 2.0
+        case .under1h:
+            return 1.0
+        case .under30m:
+            return 0.75
+        case .under5m, .done:
+            return 0.35
+        }
+    }
+
     private var spriteOffsetY: CGFloat {
         CGFloat(PetPanelMetrics.spriteOffsetY(hasLeaveTime: hasLeaveTime))
     }
@@ -151,7 +175,7 @@ struct WorkPetView: View {
     }
 
     private var spritePetBody: some View {
-        TimelineView(.animation) { timeline in
+        TimelineView(.periodic(from: Date(timeIntervalSinceReferenceDate: 0), by: spriteTimelineInterval)) { timeline in
             let time = timeline.date.timeIntervalSinceReferenceDate
             let capsuleElapsed = timeline.date.timeIntervalSince(capsulePhaseStartedAt)
 
@@ -304,6 +328,7 @@ struct WorkPetView: View {
         withAnimation(.smooth(duration: 0.18)) {
             temporaryMessage = nil
         }
+        model.refreshAttendance(force: true, allowWebSessionProbe: true)
         MainWindowController.shared.showLogin()
     }
 
@@ -440,32 +465,22 @@ private struct AgentUsageMeter: View {
     let accent: Color
 
     var body: some View {
-        TimelineView(.animation) { timeline in
-            GeometryReader { proxy in
-                let width = max(4, proxy.size.width * CGFloat(percent) / 100)
-                let phase = timeline.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 1.8) / 1.8
+        GeometryReader { proxy in
+            let width = max(4, proxy.size.width * CGFloat(percent) / 100)
 
-                ZStack(alignment: .leading) {
-                    Capsule(style: .continuous)
-                        .fill(Color.black.opacity(0.16))
+            ZStack(alignment: .leading) {
+                Capsule(style: .continuous)
+                    .fill(Color.black.opacity(0.16))
 
-                    Capsule(style: .continuous)
-                        .fill(accent.opacity(percent == 0 ? 0.36 : 0.9))
-                        .frame(width: width)
-                        .overlay(alignment: .leading) {
-                            Capsule(style: .continuous)
-                                .fill(.white.opacity(percent == 0 ? 0.12 : 0.42))
-                                .frame(width: 16)
-                                .offset(x: (width + 12) * phase - 12)
-                                .clipped()
-                        }
-                        .overlay {
-                            Capsule(style: .continuous)
-                                .stroke(.white.opacity(0.35), lineWidth: 0.6)
-                        }
-                }
-                .animation(.smooth(duration: 0.24), value: percent)
+                Capsule(style: .continuous)
+                    .fill(accent.opacity(percent == 0 ? 0.36 : 0.9))
+                    .frame(width: width)
+                    .overlay {
+                        Capsule(style: .continuous)
+                            .stroke(.white.opacity(0.35), lineWidth: 0.6)
+                    }
             }
+            .animation(.smooth(duration: 0.24), value: percent)
         }
     }
 }

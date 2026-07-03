@@ -355,6 +355,17 @@ final class AgentUsageTests: XCTestCase {
         XCTAssertEqual(next, lastRefresh.addingTimeInterval(60))
     }
 
+    func testRefreshPolicyDefaultPollingIsFiveMinutes() throws {
+        let lastRefresh = try XCTUnwrap(DateComponents(calendar: calendar, timeZone: calendar.timeZone, year: 2026, month: 6, day: 16, hour: 13, minute: 45).date)
+
+        let next = AgentUsageRefreshPolicy.nextRefreshAt(
+            snapshots: [],
+            lastRefreshAt: lastRefresh
+        )
+
+        XCTAssertEqual(next, lastRefresh.addingTimeInterval(5 * 60))
+    }
+
     func testCompactLineCanIncludeMissingProvidersAsWaiting() throws {
         let now = try XCTUnwrap(DateComponents(calendar: calendar, timeZone: calendar.timeZone, year: 2026, month: 6, day: 16, hour: 13, minute: 45).date)
         let reset = now.addingTimeInterval(60 * 60)
@@ -408,5 +419,33 @@ final class AgentUsageTests: XCTestCase {
         XCTAssertEqual(snapshots.first(where: { $0.provider == .codex })?.usedPercent, 9)
         XCTAssertEqual(snapshots.first(where: { $0.provider == .claude })?.usedPercent, 54)
         XCTAssertEqual(snapshots.count, 2)
+    }
+
+    func testFileReaderReadsCodexRateLimitFromTailOfLargeSessionLog() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("MacWorkTimerAgentUsageTailTests-\(UUID().uuidString)", isDirectory: true)
+        let codexRoot = root.appendingPathComponent("codex", isDirectory: true)
+        let codexDay = codexRoot.appendingPathComponent("2026/06/16", isDirectory: true)
+        try FileManager.default.createDirectory(at: codexDay, withIntermediateDirectories: true)
+        defer {
+            try? FileManager.default.removeItem(at: root)
+        }
+
+        let largePrefix = String(repeating: #"{"timestamp":"2026-06-16T04:00:00.000Z","type":"noise"}"# + "\n", count: 200)
+        let latest = #"{"timestamp":"2026-06-16T04:42:00.000Z","type":"event_msg","payload":{"rate_limits":{"primary":{"used_percent":99.0,"window_minutes":300,"resets_at":1781588855},"plan_type":"pro"}}}"#
+        try (largePrefix + latest + "\n").write(
+            to: codexDay.appendingPathComponent("rollout-large.jsonl"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        let snapshots = AgentUsageFileReader(codexTailByteLimit: 512).readSnapshots(
+            codexSessionsRoot: codexRoot,
+            claudeStatusLineBridgeURL: nil,
+            claudeHudCacheURL: nil
+        )
+
+        XCTAssertEqual(snapshots.first?.provider, .codex)
+        XCTAssertEqual(snapshots.first?.usedPercent, 99)
     }
 }

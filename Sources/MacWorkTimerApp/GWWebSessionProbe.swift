@@ -5,9 +5,14 @@ import WebKit
 final class GWWebSessionProbe: NSObject, WKNavigationDelegate {
     private var webView: WKWebView?
     private var completion: ((GWStatus) -> Void)?
+    private var timeoutTask: Task<Void, Never>?
     private var didComplete = false
 
     func refresh(completion: @escaping (GWStatus) -> Void) {
+        timeoutTask?.cancel()
+        webView?.stopLoading()
+        webView?.navigationDelegate = nil
+
         self.completion = completion
         didComplete = false
 
@@ -19,6 +24,14 @@ final class GWWebSessionProbe: NSObject, WKNavigationDelegate {
         self.webView = webView
 
         webView.load(URLRequest(url: GWConfiguration.userMainURL))
+        timeoutTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(12))
+            guard !Task.isCancelled else {
+                return
+            }
+
+            self?.complete(with: .failed("GW 조회 시간이 초과되었습니다."))
+        }
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
@@ -48,9 +61,12 @@ final class GWWebSessionProbe: NSObject, WKNavigationDelegate {
         }
 
         didComplete = true
+        timeoutTask?.cancel()
+        timeoutTask = nil
         let completion = completion
         self.completion = nil
         webView?.navigationDelegate = nil
+        webView?.stopLoading()
         webView = nil
         completion?(status)
     }

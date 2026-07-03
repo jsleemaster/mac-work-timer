@@ -163,7 +163,7 @@ final class StatusBarController: NSObject, NSMenuDelegate {
     }
 
     @objc private func refreshAttendance() {
-        model.refreshAttendance()
+        model.refreshAttendance(force: true, allowWebSessionProbe: true)
     }
 
     @objc private func selectWorkdayMode(_ sender: NSMenuItem) {
