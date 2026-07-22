@@ -274,14 +274,23 @@ final class AppModel: NSObject, ObservableObject {
                 statusMessage = message(for: status)
             }
             updateNotificationIfNeeded(force: true)
-            refreshWeeklyAttendance()
+            let reason: WeeklyAttendanceRefreshReason
+            if case .attendance = status {
+                reason = .authenticatedWebSession
+            } else {
+                reason = .routine
+            }
+            refreshWeeklyAttendance(reason: reason)
         } catch {
             statusMessage = error.localizedDescription
         }
     }
 
-    private func refreshWeeklyAttendance() {
-        guard !isRefreshingWeeklyAttendance else { return }
+    private func refreshWeeklyAttendance(reason: WeeklyAttendanceRefreshReason = .routine) {
+        guard WeeklyAttendanceRefreshPolicy.shouldStart(
+            isRefreshInProgress: isRefreshingWeeklyAttendance,
+            reason: reason
+        ) else { return }
         isRefreshingWeeklyAttendance = true
         let weekStart = weeklyCalculator.weekStartString(containing: now)
         weeklyWebSessionProbe.refresh(weekStart: weekStart) { [weak self] result in

@@ -62,7 +62,7 @@ final class GWWeeklyWebSessionProbe: NSObject, WKNavigationDelegate {
                     complete(.success(records))
                     return
                 }
-                let result = try? await webView.evaluateJavaScript(Self.clickScript(label: label))
+                let result = try? await webView.evaluateJavaScript(GWWebMenuClickScript.make(label: label))
                 if result as? Bool == true {
                     didClick = true
                     break
@@ -141,34 +141,4 @@ final class GWWeeklyWebSessionProbe: NSObject, WKNavigationDelegate {
     })()
     """#
 
-    private static func clickScript(label: String) -> String {
-        let encodedLabel = label
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "'", with: "\\'")
-        return #"""
-        (() => {
-          const wanted = 'LABEL';
-          const visit = (win) => {
-            try {
-              const elements = Array.from(win.document.querySelectorAll('a, button, [role="menuitem"], li, span'));
-              const match = elements.find((element) => {
-                const text = (element.textContent || '').replace(/\s+/g, ' ').trim();
-                const rect = element.getBoundingClientRect();
-                return text === wanted && rect.width > 0 && rect.height > 0;
-              });
-              if (match) {
-                const clickable = match.closest('a, button, [role="menuitem"]') || match;
-                clickable.click();
-                return true;
-              }
-              for (let index = 0; index < win.frames.length; index += 1) {
-                if (visit(win.frames[index])) return true;
-              }
-            } catch (_) {}
-            return false;
-          };
-          return visit(window);
-        })()
-        """#.replacingOccurrences(of: "LABEL", with: encodedLabel)
-    }
 }
