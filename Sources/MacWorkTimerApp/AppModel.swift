@@ -274,16 +274,14 @@ final class AppModel: NSObject, ObservableObject {
                 statusMessage = message(for: status)
             }
             updateNotificationIfNeeded(force: true)
-            let reason: WeeklyAttendanceRefreshReason
-            if case .attendance = status {
-                reason = .authenticatedWebSession
-            } else {
-                reason = .routine
-            }
-            refreshWeeklyAttendance(reason: reason)
+            refreshWeeklyAttendance()
         } catch {
             statusMessage = error.localizedDescription
         }
+    }
+
+    func authenticatedWebSessionDidBecomeAvailable() {
+        refreshWeeklyAttendance(reason: .authenticatedWebSession)
     }
 
     private func refreshWeeklyAttendance(reason: WeeklyAttendanceRefreshReason = .routine) {

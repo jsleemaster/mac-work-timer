@@ -1,11 +1,16 @@
 import SwiftUI
 import WebKit
+import MacWorkTimerCore
 
 struct GWWebLoginView: NSViewRepresentable {
+    let onAuthenticatedSession: () -> Void
     let onAttendanceText: (String) -> Void
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(onAttendanceText: onAttendanceText)
+        Coordinator(
+            onAuthenticatedSession: onAuthenticatedSession,
+            onAttendanceText: onAttendanceText
+        )
     }
 
     func makeNSView(context: Context) -> WKWebView {
@@ -20,19 +25,33 @@ struct GWWebLoginView: NSViewRepresentable {
     func updateNSView(_ nsView: WKWebView, context: Context) {}
 
     final class Coordinator: NSObject, WKNavigationDelegate {
+        let onAuthenticatedSession: () -> Void
         let onAttendanceText: (String) -> Void
 
-        init(onAttendanceText: @escaping (String) -> Void) {
+        init(
+            onAuthenticatedSession: @escaping () -> Void,
+            onAttendanceText: @escaping (String) -> Void
+        ) {
+            self.onAuthenticatedSession = onAuthenticatedSession
             self.onAttendanceText = onAttendanceText
         }
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
             webView.evaluateJavaScript("document.body ? document.body.innerText : ''") { [weak self] result, _ in
-                guard let text = result as? String, text.contains("출근") else {
+                guard let self, let text = result as? String else {
                     return
                 }
+                let isAuthenticated = GWAuthenticatedPageDetector.isAuthenticated(
+                    urlPath: webView.url?.path,
+                    bodyText: text
+                )
                 DispatchQueue.main.async {
-                    self?.onAttendanceText(text)
+                    if text.contains("출근") {
+                        self.onAttendanceText(text)
+                    }
+                    if isAuthenticated {
+                        self.onAuthenticatedSession()
+                    }
                 }
             }
         }

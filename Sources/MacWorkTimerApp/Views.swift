@@ -77,9 +77,14 @@ private struct LoginView: View {
             .padding(.horizontal, 20)
             .padding(.top, 18)
 
-            GWWebLoginView { text in
-                model.applyAttendanceText(text)
-            }
+            GWWebLoginView(
+                onAuthenticatedSession: {
+                    model.authenticatedWebSessionDidBecomeAvailable()
+                },
+                onAttendanceText: { text in
+                    model.applyAttendanceText(text)
+                }
+            )
             .background(.white)
             .clipShape(RoundedRectangle(cornerRadius: 8))
             .padding(.horizontal, 20)
