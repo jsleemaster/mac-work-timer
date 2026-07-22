@@ -56,6 +56,10 @@ public struct WeeklyAttendanceParser: Sendable {
             )
         }
 
+        guard row.contains("출퇴근") || row.contains("세콤캡스연동") else {
+            return nil
+        }
+
         guard let checkInTime = validTimeTokens.first,
               let checkInAt = date(workDate: workDate, time: checkInTime) else {
             return nil

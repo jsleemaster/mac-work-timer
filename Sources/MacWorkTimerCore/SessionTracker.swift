@@ -80,12 +80,10 @@ public final class SessionTracker {
 
     @discardableResult
     public func clearSessionAndGWStatus() throws -> AppState {
-        let existing = try store.load()
         let state = AppState(
             todaySession: nil,
             gwStatus: .notConfigured,
-            notificationSentForDate: nil,
-            weeklyAttendanceCache: existing.weeklyAttendanceCache
+            notificationSentForDate: nil
         )
         try store.save(state)
         return state

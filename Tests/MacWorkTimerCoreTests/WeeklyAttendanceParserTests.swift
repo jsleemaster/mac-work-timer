@@ -56,8 +56,8 @@ final class WeeklyAttendanceParserTests: XCTestCase {
         let html = """
         <table>
           <tr><th>일자</th><th>요일</th><th>출근시각</th><th>퇴근시각</th><th>근태구분</th></tr>
-          <tr><td>2026-07-20</td><td>월</td><td>09:21</td><td>18:44</td><td>정상</td></tr>
-          <tr><td>2026-07-20</td><td>월</td><td>09:21</td><td>18:44</td><td>정상</td></tr>
+          <tr><td>2026-07-20</td><td>월</td><td>09:21</td><td>18:44</td><td>출퇴근</td><td>정상</td></tr>
+          <tr><td>2026-07-20</td><td>월</td><td>09:21</td><td>18:44</td><td>출퇴근</td><td>정상</td></tr>
         </table>
         """
 
@@ -69,6 +69,12 @@ final class WeeklyAttendanceParserTests: XCTestCase {
 
     func testIgnoresRowsWithMalformedTimes() {
         let text = "2026-07-20\t월\t29:71\t세콤캡스연동\t18:44\t세콤캡스연동\t출퇴근\t정상"
+
+        XCTAssertTrue(parser.parse(text).isEmpty)
+    }
+
+    func testIgnoresUnrelatedCalendarRowsWithTwoTimes() {
+        let text = "2026-07-20\t프로젝트 회의\t09:21\t18:44\t회의실 A"
 
         XCTAssertTrue(parser.parse(text).isEmpty)
     }

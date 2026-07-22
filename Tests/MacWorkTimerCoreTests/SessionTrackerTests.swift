@@ -24,7 +24,7 @@ final class SessionTrackerTests: XCTestCase {
         XCTAssertEqual(try store.load().weeklyAttendanceCache, cache)
     }
 
-    func testClearingLoginStateKeepsWeeklyAttendanceCache() throws {
+    func testClearingLoginStateClearsWeeklyAttendanceCache() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         let store = StateStore(directory: directory)
         let tracker = SessionTracker(store: store)
@@ -42,7 +42,7 @@ final class SessionTrackerTests: XCTestCase {
 
         let updated = try tracker.clearSessionAndGWStatus()
 
-        XCTAssertEqual(updated.weeklyAttendanceCache, cache)
+        XCTAssertNil(updated.weeklyAttendanceCache)
     }
 
     func testStartOrResumeCreatesTodaySessionWhenStoredSessionIsStale() throws {

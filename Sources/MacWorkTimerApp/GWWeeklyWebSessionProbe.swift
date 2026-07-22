@@ -56,12 +56,23 @@ final class GWWeeklyWebSessionProbe: NSObject, WKNavigationDelegate {
         let menuLabels = ["인사/근태", "근태관리", "개인근태현황"]
 
         for label in menuLabels {
-            if let records = await records(in: webView), !records.isEmpty {
-                complete(.success(records))
-                return
+            var didClick = false
+            for _ in 0..<4 {
+                if let records = await records(in: webView), !records.isEmpty {
+                    complete(.success(records))
+                    return
+                }
+                let result = try? await webView.evaluateJavaScript(Self.clickScript(label: label))
+                if result as? Bool == true {
+                    didClick = true
+                    break
+                }
+                try? await Task.sleep(for: .milliseconds(400))
+                guard !Task.isCancelled, !didComplete else { return }
             }
-            _ = try? await webView.evaluateJavaScript(Self.clickScript(label: label))
-            try? await Task.sleep(for: .milliseconds(850))
+            if didClick {
+                try? await Task.sleep(for: .milliseconds(900))
+            }
             guard !Task.isCancelled, !didComplete else { return }
         }
 

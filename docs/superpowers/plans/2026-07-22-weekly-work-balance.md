@@ -298,7 +298,7 @@ public func updateWeeklyAttendanceCache(_ cache: WeeklyAttendanceCache) throws -
 }
 ```
 
-Preserve the weekly cache in `clearSessionAndGWStatus`; logout should clear credentials/current session but not destroy the last read-only weekly evidence unless the user explicitly clears app data.
+Preserve the weekly cache across transient network/login failures. `clearSessionAndGWStatus`, which is used for an explicit logout, must clear the cache so a different account can never see the previous account's weekly rows.
 
 - [ ] **Step 4: Run persistence tests and verify GREEN**
 

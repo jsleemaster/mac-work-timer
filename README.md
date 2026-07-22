@@ -6,11 +6,15 @@ macOS menu bar app for tracking a 9-hour workday from the GW attendance check-in
 
 - Reads the GW check-in record after web login.
 - Calculates the target time as check-in + 9 hours using wall-clock elapsed time.
+- Reads the current week's GW attendance table without submitting changes.
+- Adds completed work and credited leave toward 40 hours, subtracting only the overlap with the 12:00–13:00 lunch window.
+- Keeps weekly flex time available for any remaining weekday and shows `오늘 퇴근`, `이번 주 여유`, and `오늘 다 쓰면`.
 - Shows remaining time in the menu bar and a normal SwiftUI window.
 - Shows local Codex/Claude limit status only when a 5-hour or weekly AI limit is hit.
 - Stores app state in `~/Library/Application Support/Mac Work Timer/state.json`.
 - Stores GW credentials only in macOS Keychain.
 - Tries read-only GW login/status refresh with `URLSession`; if 2FA or policy blocks it, opens GW in an embedded `WKWebView`.
+- Caches only the last successfully parsed weekly attendance rows. A failed or expired login never replaces that cache with guessed time.
 - Can register itself as a login item from Settings.
 
 ## Build
@@ -91,3 +95,5 @@ npm exec --yes --package=playwright -- node scripts/inspect_gw_login.mjs https:/
 ```
 
 Use this only to inspect forms, navigation, and read-only attendance pages. Do not call attendance write endpoints from this app.
+
+The weekly balance follows the same rule: the WebKit probe only navigates through visible GW menus and reads table text. If 2FA prevents access, the daily timer continues and any previously confirmed weekly cache remains unchanged.
