@@ -1,17 +1,31 @@
 import Foundation
 
+public struct WeeklyBalanceCopy: Equatable, Sendable {
+    public let label: String
+    public let value: String
+
+    public init(label: String, value: String) {
+        self.label = label
+        self.value = value
+    }
+}
+
 public enum WeeklyWorkCopyFormatter {
     public static func balanceLine(_ balance: TimeInterval) -> String {
+        let copy = balanceCopy(balance)
+        return "\(copy.label) \(copy.value)"
+    }
+
+    public static func balanceCopy(_ balance: TimeInterval) -> WeeklyBalanceCopy {
         let totalMinutes = Int(abs(balance) / 60)
         guard totalMinutes > 0 else {
-            return "이번 주 딱 맞아요"
+            return WeeklyBalanceCopy(label: "이번 주", value: "딱 맞아요")
         }
-
         let value = durationText(totalMinutes: totalMinutes)
         if balance > 0 {
-            return "이번 주 여유 +\(value)"
+            return WeeklyBalanceCopy(label: "이번 주 여유", value: "+\(value)")
         }
-        return "이번 주 부족 \(value)"
+        return WeeklyBalanceCopy(label: "이번 주 부족", value: value)
     }
 
     private static func durationText(totalMinutes: Int) -> String {

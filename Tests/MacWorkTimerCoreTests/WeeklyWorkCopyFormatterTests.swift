@@ -17,4 +17,18 @@ final class WeeklyWorkCopyFormatterTests: XCTestCase {
     func testHourAndMinuteBalanceRemainsCompact() {
         XCTAssertEqual(WeeklyWorkCopyFormatter.balanceLine(72 * 60), "이번 주 여유 +1시간 12분")
     }
+
+    func testPositiveBalanceSplitsIntoAlignedFriendlyRow() {
+        let copy = WeeklyWorkCopyFormatter.balanceCopy(23 * 60)
+
+        XCTAssertEqual(copy.label, "이번 주 여유")
+        XCTAssertEqual(copy.value, "+23분")
+    }
+
+    func testNegativeBalanceSplitsIntoShortageRow() {
+        let copy = WeeklyWorkCopyFormatter.balanceCopy(-14 * 60)
+
+        XCTAssertEqual(copy.label, "이번 주 부족")
+        XCTAssertEqual(copy.value, "14분")
+    }
 }
