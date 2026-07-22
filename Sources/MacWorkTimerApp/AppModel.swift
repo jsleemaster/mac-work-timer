@@ -67,6 +67,13 @@ final class AppModel: NSObject, ObservableObject {
         state.currentSession(on: now, clock: clock)
     }
 
+    var needsWeeklyLoginRecovery: Bool {
+        MainWindowPresentationPolicy.needsWeeklyLoginRecovery(
+            hasSession: currentSession != nil,
+            hasCompleteWeeklySummary: weeklySummary?.isComplete == true
+        )
+    }
+
     var weeklySummary: WeeklyWorkSummary? {
         guard let currentSession,
               let cache = state.weeklyAttendanceCache else {

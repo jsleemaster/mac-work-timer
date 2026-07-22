@@ -9,4 +9,11 @@ final class MainWindowMetricsTests: XCTestCase {
     func testLoginWindowKeepsWebLoginSize() {
         XCTAssertEqual(MainWindowMetrics.contentSize(hasSession: false), WindowSize(width: 620, height: 560))
     }
+
+    func testWeeklyLoginRecoveryUsesFullLoginWindowSizeWithActiveSession() {
+        XCTAssertEqual(
+            MainWindowMetrics.contentSize(hasSession: true, showsLogin: true),
+            WindowSize(width: 620, height: 560)
+        )
+    }
 }

@@ -2,6 +2,10 @@ import XCTest
 @testable import MacWorkTimerCore
 
 final class WeeklyWorkCopyFormatterTests: XCTestCase {
+    func testLoginRecoveryPromptUsesFriendlyActionCopy() {
+        XCTAssertEqual(WeeklyWorkCopyFormatter.loginRecoveryPrompt, "주간 기록 연결하기")
+    }
+
     func testPositiveBalanceUsesFriendlyFreeTimeCopy() {
         XCTAssertEqual(WeeklyWorkCopyFormatter.balanceLine(23 * 60), "이번 주 여유 +23분")
     }

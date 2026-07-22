@@ -84,4 +84,9 @@ final class PetPanelMetricsTests: XCTestCase {
             readableBottomClearance
         )
     }
+
+    func testWeeklyCardUsesComfortableInnerPadding() {
+        XCTAssertEqual(PetPanelMetrics.weeklyCardHorizontalPadding, 10)
+        XCTAssertEqual(PetPanelMetrics.weeklyCardVerticalPadding, 6)
+    }
 }

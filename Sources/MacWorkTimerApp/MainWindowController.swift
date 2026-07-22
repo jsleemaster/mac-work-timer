@@ -9,7 +9,12 @@ final class MainWindowController: NSObject, NSWindowDelegate {
     private var window: NSWindow?
 
     func showLogin() {
-        guard MainWindowPresentationPolicy.shouldOpenLoginWindow(hasSession: AppModel.shared.currentSession != nil) else {
+        let hasSession = AppModel.shared.currentSession != nil
+        let needsWeeklyLoginRecovery = AppModel.shared.needsWeeklyLoginRecovery
+        guard MainWindowPresentationPolicy.shouldOpenLoginWindow(
+            hasSession: hasSession,
+            needsWeeklyLoginRecovery: needsWeeklyLoginRecovery
+        ) else {
             hide()
             PetWindowController.shared.show()
             return
@@ -31,12 +36,19 @@ final class MainWindowController: NSObject, NSWindowDelegate {
         }
 
         let hasSession = AppModel.shared.currentSession != nil
-        guard !MainWindowPresentationPolicy.shouldHideMainWindow(hasSession: hasSession) else {
+        let needsWeeklyLoginRecovery = AppModel.shared.needsWeeklyLoginRecovery
+        guard !MainWindowPresentationPolicy.shouldHideMainWindow(
+            hasSession: hasSession,
+            needsWeeklyLoginRecovery: needsWeeklyLoginRecovery
+        ) else {
             hide()
             return
         }
 
-        let size = Self.contentSize(hasSession: hasSession)
+        let size = Self.contentSize(
+            hasSession: hasSession,
+            needsWeeklyLoginRecovery: needsWeeklyLoginRecovery
+        )
 
         guard window.contentView?.frame.size != size else {
             return
@@ -56,7 +68,10 @@ final class MainWindowController: NSObject, NSWindowDelegate {
         let window = NSWindow(
             contentRect: NSRect(
                 origin: .zero,
-                size: Self.contentSize(hasSession: AppModel.shared.currentSession != nil)
+                size: Self.contentSize(
+                    hasSession: AppModel.shared.currentSession != nil,
+                    needsWeeklyLoginRecovery: AppModel.shared.needsWeeklyLoginRecovery
+                )
             ),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
@@ -76,8 +91,11 @@ final class MainWindowController: NSObject, NSWindowDelegate {
         return false
     }
 
-    private static func contentSize(hasSession: Bool) -> NSSize {
-        let size = MainWindowMetrics.contentSize(hasSession: hasSession)
+    private static func contentSize(hasSession: Bool, needsWeeklyLoginRecovery: Bool) -> NSSize {
+        let size = MainWindowMetrics.contentSize(
+            hasSession: hasSession,
+            showsLogin: !hasSession || needsWeeklyLoginRecovery
+        )
         return NSSize(width: size.width, height: size.height)
     }
 }

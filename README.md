@@ -15,6 +15,7 @@ macOS menu bar app for tracking a 9-hour workday from the GW attendance check-in
 - Stores GW credentials only in macOS Keychain.
 - Tries read-only GW login/status refresh with `URLSession`; if 2FA or policy blocks it, opens GW in an embedded `WKWebView`.
 - Caches only the last successfully parsed weekly attendance rows. A failed or expired login never replaces that cache with guessed time.
+- If the weekly summary is incomplete, the pet shows `주간 기록 연결하기`; click the pet and finish GW web login/2FA in the app to refresh the weekly rows.
 - Can register itself as a login item from Settings.
 
 ## Build

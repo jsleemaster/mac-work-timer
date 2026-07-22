@@ -8,7 +8,7 @@ final class StatusBarController: NSObject, NSMenuDelegate {
     private let model: AppModel
     private let statusItem: NSStatusItem
     private let menu = NSMenu()
-    private let loginItem = NSMenuItem(title: "로그인 열기", action: #selector(openWindow), keyEquivalent: "o")
+    private let loginItem = NSMenuItem(title: "GW 로그인 열기", action: #selector(openWindow), keyEquivalent: "o")
     private let workdayModeParentItem = NSMenuItem(title: "근무 형태", action: nil, keyEquivalent: "")
     private let workdayModeMenu = NSMenu()
     private let checkInItem = NSMenuItem()
@@ -122,7 +122,7 @@ final class StatusBarController: NSObject, NSMenuDelegate {
         }
 
         let hasSession = model.currentSession != nil
-        loginItem.isHidden = hasSession
+        loginItem.isHidden = hasSession && !model.needsWeeklyLoginRecovery
 
         if let session = model.currentSession {
             checkInItem.title = "출근 \(DateFormatting.time.string(from: session.workStartAt))"

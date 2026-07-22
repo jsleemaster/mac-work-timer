@@ -10,6 +10,11 @@ public struct WeeklyAttendanceParser: Sendable {
     }
 
     public func parse(_ htmlOrText: String) -> [WeeklyAttendanceRecord] {
+        let requiredHeaders = ["일자", "출근시각", "퇴근시각", "근태구분"]
+        guard requiredHeaders.allSatisfy(htmlOrText.contains) else {
+            return []
+        }
+
         var seenRows = Set<String>()
         return normalizedRows(from: htmlOrText).compactMap { row in
             guard seenRows.insert(row).inserted else {
@@ -21,6 +26,9 @@ public struct WeeklyAttendanceParser: Sendable {
 
     private func parseRow(_ row: String) -> WeeklyAttendanceRecord? {
         guard let workDate = firstMatch(in: row, pattern: #"^\s*(\d{4}-\d{2}-\d{2})\b"#) else {
+            return nil
+        }
+        guard hasMatch(in: row, pattern: #"\t\s*[월화수목금토일]\s*\t"#) else {
             return nil
         }
 

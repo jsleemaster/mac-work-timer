@@ -11,8 +11,8 @@ public struct WindowSize: Equatable, Sendable {
 }
 
 public enum MainWindowMetrics {
-    public static func contentSize(hasSession: Bool) -> WindowSize {
-        hasSession
+    public static func contentSize(hasSession: Bool, showsLogin: Bool = false) -> WindowSize {
+        hasSession && !showsLogin
             ? WindowSize(width: 430, height: 160)
             : WindowSize(width: 620, height: 560)
     }

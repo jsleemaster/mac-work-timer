@@ -11,6 +11,8 @@ public struct WeeklyBalanceCopy: Equatable, Sendable {
 }
 
 public enum WeeklyWorkCopyFormatter {
+    public static let loginRecoveryPrompt = "주간 기록 연결하기"
+
     public static func balanceLine(_ balance: TimeInterval) -> String {
         let copy = balanceCopy(balance)
         return "\(copy.label) \(copy.value)"

@@ -36,6 +36,9 @@ struct WorkPetView: View {
     }
 
     private var labelText: String {
+        if model.needsWeeklyLoginRecovery {
+            return WeeklyWorkCopyFormatter.loginRecoveryPrompt
+        }
         if case .capsuleIdle = revealDisplay {
             return capsulePhase == .idle ? "출근 완료" : "누가 나올까"
         }
@@ -147,8 +150,18 @@ struct WorkPetView: View {
                 }
 
             }
-                .padding(.horizontal, 8)
-                .padding(.vertical, completeWeeklySummary == nil ? (leaveTimeText == nil ? 5 : 3) : 5)
+                .padding(
+                    .horizontal,
+                    completeWeeklySummary == nil
+                        ? 8
+                        : CGFloat(PetPanelMetrics.weeklyCardHorizontalPadding)
+                )
+                .padding(
+                    .vertical,
+                    completeWeeklySummary == nil
+                        ? (leaveTimeText == nil ? 5 : 3)
+                        : CGFloat(PetPanelMetrics.weeklyCardVerticalPadding)
+                )
                 .liquidGlass(
                     in: Capsule(style: .continuous),
                     tint: labelGlassTint,
@@ -339,7 +352,10 @@ struct WorkPetView: View {
     }
 
     private func handleClick() {
-        switch PetClickAction.action(for: revealDisplay) {
+        switch PetClickAction.action(
+            for: revealDisplay,
+            needsWeeklyLoginRecovery: model.needsWeeklyLoginRecovery
+        ) {
         case .openLogin:
             openLoginWindow()
         case .revealCapsule:

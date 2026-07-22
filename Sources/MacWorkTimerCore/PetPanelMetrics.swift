@@ -19,6 +19,8 @@ public enum PetPanelMetrics {
     public static let singleLineSpriteOffsetY: Double = 36
     public static let twoLineSpriteOffsetY: Double = 50
     public static let threeLineSpriteOffsetY: Double = 64
+    public static let weeklyCardHorizontalPadding: Double = 10
+    public static let weeklyCardVerticalPadding: Double = 6
     public static let localSpriteWidth: Double = 90
     public static let localSpriteHeight: Double = 98
     public static let localImageWidth: Double = 84

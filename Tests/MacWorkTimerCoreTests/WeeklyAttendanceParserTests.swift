@@ -23,6 +23,7 @@ final class WeeklyAttendanceParserTests: XCTestCase {
 
     func testParsesAttendanceAndAfternoonLeaveAsSeparateRecords() throws {
         let text = """
+        일자\t요일\t출근시각\t출근등록방식\t퇴근시각\t퇴근등록방식\t근태항목\t근태구분
         2026-07-10\t금\t09:21\t세콤캡스연동\t14:23\t세콤캡스연동\t출퇴근\t정상
         2026-07-10\t금\t\t\t\t\t법정휴가\t오후반차
         """
@@ -38,6 +39,7 @@ final class WeeklyAttendanceParserTests: XCTestCase {
 
     func testKeepsBlankCurrentCheckoutAndExplicitAbsence() throws {
         let text = """
+        일자\t요일\t출근시각\t출근등록방식\t퇴근시각\t퇴근등록방식\t근태항목\t근태구분
         2026-07-22\t수\t09:35\t세콤캡스연동\t\t\t출퇴근\t출근
         2026-07-17\t금\t\t\t\t\t출퇴근\t결근
         """
@@ -68,15 +70,38 @@ final class WeeklyAttendanceParserTests: XCTestCase {
     }
 
     func testIgnoresRowsWithMalformedTimes() {
-        let text = "2026-07-20\t월\t29:71\t세콤캡스연동\t18:44\t세콤캡스연동\t출퇴근\t정상"
+        let text = """
+        일자\t요일\t출근시각\t출근등록방식\t퇴근시각\t퇴근등록방식\t근태항목\t근태구분
+        2026-07-20\t월\t29:71\t세콤캡스연동\t18:44\t세콤캡스연동\t출퇴근\t정상
+        """
 
         XCTAssertTrue(parser.parse(text).isEmpty)
     }
 
     func testIgnoresUnrelatedCalendarRowsWithTwoTimes() {
-        let text = "2026-07-20\t프로젝트 회의\t09:21\t18:44\t회의실 A"
+        let text = """
+        일자\t요일\t출근시각\t출근등록방식\t퇴근시각\t퇴근등록방식\t근태항목\t근태구분
+        2026-07-20\t월\t프로젝트 회의\t09:21\t18:44\t회의실 A
+        """
 
         XCTAssertTrue(parser.parse(text).isEmpty)
+    }
+
+    func testIgnoresDashboardCalendarLeaveBeforeAttendanceTableLoads() {
+        let text = """
+        2026-07-22 3건
+        07-20 09:00 ~ 07-24 18:00 공유 [출산휴가] ROY
+        오늘 07.22 수요일
+        받은편지함
+        일자\t요일\t출근시각\t출근등록방식\t퇴근시각\t퇴근등록방식\t근태항목\t근태구분
+        2026-07-20\t월\t09:21\t세콤캡스연동\t18:44\t세콤캡스연동\t출퇴근\t정상
+        """
+
+        let records = parser.parse(text)
+
+        XCTAssertEqual(records.count, 1)
+        XCTAssertEqual(records.first?.workDate, "2026-07-20")
+        XCTAssertEqual(records.first?.kind, .attendance)
     }
 
     func testParsesCellsSplitAcrossLinesBetweenDateBoundaries() throws {
@@ -85,6 +110,7 @@ final class WeeklyAttendanceParserTests: XCTestCase {
         요일
         출근시각
         퇴근시각
+        근태구분
         2026-07-20
         월
         09:21
