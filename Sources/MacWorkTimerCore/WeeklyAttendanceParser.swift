@@ -85,14 +85,31 @@ public struct WeeklyAttendanceParser: Sendable {
             .replacingOccurrences(of: "\r\n", with: "\n")
             .replacingOccurrences(of: "\r", with: "\n")
 
-        return withRowBoundaries
+        let lines = withRowBoundaries
             .components(separatedBy: .newlines)
             .map { line in
                 line
                     .replacingOccurrences(of: #"[ \u{00A0}]+"#, with: " ", options: .regularExpression)
                     .trimmingCharacters(in: .whitespacesAndNewlines)
             }
-            .filter { hasMatch(in: $0, pattern: #"^\s*\d{4}-\d{2}-\d{2}\b"#) }
+            .filter { !$0.isEmpty }
+
+        var rows: [String] = []
+        var currentCells: [String] = []
+        for line in lines {
+            if hasMatch(in: line, pattern: #"^\s*\d{4}-\d{2}-\d{2}\b"#) {
+                if !currentCells.isEmpty {
+                    rows.append(currentCells.joined(separator: "\t"))
+                }
+                currentCells = [line]
+            } else if !currentCells.isEmpty {
+                currentCells.append(line)
+            }
+        }
+        if !currentCells.isEmpty {
+            rows.append(currentCells.joined(separator: "\t"))
+        }
+        return rows
     }
 
     private func date(workDate: String, time: String) -> Date? {

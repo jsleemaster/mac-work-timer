@@ -73,6 +73,39 @@ final class WeeklyAttendanceParserTests: XCTestCase {
         XCTAssertTrue(parser.parse(text).isEmpty)
     }
 
+    func testParsesCellsSplitAcrossLinesBetweenDateBoundaries() throws {
+        let text = """
+        일자
+        요일
+        출근시각
+        퇴근시각
+        2026-07-20
+        월
+        09:21
+        세콤캡스연동
+        18:44
+        세콤캡스연동
+        출퇴근
+        정상
+        2026-07-21
+        화
+        09:50
+        세콤캡스연동
+        18:36
+        세콤캡스연동
+        출퇴근
+        정상
+        """
+
+        let records = parser.parse(text)
+
+        XCTAssertEqual(records.count, 2)
+        guard records.count == 2 else { return }
+        XCTAssertEqual(records[0].checkInAt, try date("2026-07-20", "09:21"))
+        XCTAssertEqual(records[0].checkOutAt, try date("2026-07-20", "18:44"))
+        XCTAssertEqual(records[1].checkInAt, try date("2026-07-21", "09:50"))
+    }
+
     private func date(_ workDate: String, _ time: String) throws -> Date {
         let dateFormatter = DateFormatter()
         dateFormatter.locale = Locale(identifier: "en_US_POSIX")
