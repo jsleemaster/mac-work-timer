@@ -14,8 +14,8 @@ final class NotificationService {
         }
     }
 
-    func scheduleCompletionNotification(for session: WorkSession, from now: Date) async {
-        let interval = session.targetAt.timeIntervalSince(now)
+    func scheduleCompletionNotification(for session: WorkSession, targetAt: Date, from now: Date) async {
+        let interval = targetAt.timeIntervalSince(now)
         guard interval > 1 else {
             return
         }
@@ -32,7 +32,7 @@ final class NotificationService {
         try? await center.add(request)
     }
 
-    func deliverCompletionNotification(for session: WorkSession) async {
+    func deliverCompletionNotification(for session: WorkSession, targetAt: Date) async {
         let request = UNNotificationRequest(
             identifier: notificationID(for: session),
             content: completionContent(),
@@ -46,7 +46,7 @@ final class NotificationService {
     private func completionContent() -> UNMutableNotificationContent {
         let content = UNMutableNotificationContent()
         content.title = "퇴근 알림"
-        content.body = "퇴근 목표 시간이 됐습니다. GW 또는 세콤 상태를 확인하세요."
+        content.body = "오늘 쓸 수 있는 시간까지 채웠어요. GW 또는 세콤 상태를 확인해 주세요."
         content.sound = .default
         return content
     }

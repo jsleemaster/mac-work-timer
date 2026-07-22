@@ -68,4 +68,25 @@ final class PetPanelMetricsTests: XCTestCase {
             comfortableBottomClearance
         )
     }
+
+    func testThreeLineWeeklyCardLeavesBottomMarginForPet() {
+        XCTAssertLessThanOrEqual(
+            PetPanelMetrics.localSpriteVisualBottom(labelLineCount: 3),
+            PetPanelMetrics.height - PetPanelMetrics.minimumBottomMargin
+        )
+    }
+
+    func testThreeLineWeeklyCardKeepsReadableClearance() {
+        let readableBottomClearance = 18.0
+
+        XCTAssertGreaterThanOrEqual(
+            PetPanelMetrics.height - PetPanelMetrics.localSpriteVisualBottom(labelLineCount: 3),
+            readableBottomClearance
+        )
+    }
+
+    func testWeeklyCardUsesComfortableInnerPadding() {
+        XCTAssertEqual(PetPanelMetrics.weeklyCardHorizontalPadding, 10)
+        XCTAssertEqual(PetPanelMetrics.weeklyCardVerticalPadding, 6)
+    }
 }

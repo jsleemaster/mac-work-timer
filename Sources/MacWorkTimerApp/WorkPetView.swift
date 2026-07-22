@@ -36,6 +36,9 @@ struct WorkPetView: View {
     }
 
     private var labelText: String {
+        if model.needsWeeklyLoginRecovery {
+            return WeeklyWorkCopyFormatter.loginRecoveryPrompt
+        }
         if case .capsuleIdle = revealDisplay {
             return capsulePhase == .idle ? "출근 완료" : "누가 나올까"
         }
@@ -47,12 +50,25 @@ struct WorkPetView: View {
         PetVisualState.leaveTimeText(targetAt: model.currentSession?.targetAt)
     }
 
+    private var completeWeeklySummary: WeeklyWorkSummary? {
+        guard let summary = model.weeklySummary, summary.isComplete else {
+            return nil
+        }
+        return summary
+    }
+
     private var agentUsageCards: [AgentUsageCard] {
         model.agentUsageCards
     }
 
-    private var hasLeaveTime: Bool {
-        leaveTimeText != nil
+    private var labelLineCount: Int {
+        if temporaryMessage != nil {
+            return 1
+        }
+        if completeWeeklySummary != nil {
+            return 3
+        }
+        return leaveTimeText == nil ? 1 : 2
     }
 
     private var spriteTimelineInterval: TimeInterval {
@@ -80,7 +96,7 @@ struct WorkPetView: View {
     }
 
     private var spriteOffsetY: CGFloat {
-        CGFloat(PetPanelMetrics.spriteOffsetY(hasLeaveTime: hasLeaveTime))
+        CGFloat(PetPanelMetrics.spriteOffsetY(labelLineCount: labelLineCount))
     }
 
     private var labelTextColor: Color {
@@ -102,7 +118,18 @@ struct WorkPetView: View {
     var body: some View {
         ZStack(alignment: .top) {
             VStack(spacing: 1) {
-                if let leaveTimeText {
+                if temporaryMessage != nil {
+                    Text(labelText)
+                        .font(.system(size: 11.4, weight: .semibold, design: .rounded))
+                        .foregroundStyle(labelTextColor)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.78)
+                } else if let completeWeeklySummary {
+                    WeeklyWorkSummaryRows(
+                        summary: completeWeeklySummary,
+                        color: labelTextColor
+                    )
+                } else if let leaveTimeText {
                     Text(leaveTimeText)
                         .font(.system(size: 13.5, weight: .bold, design: .rounded))
                         .foregroundStyle(labelTextColor)
@@ -123,8 +150,18 @@ struct WorkPetView: View {
                 }
 
             }
-                .padding(.horizontal, 8)
-                .padding(.vertical, leaveTimeText == nil ? 5 : 3)
+                .padding(
+                    .horizontal,
+                    completeWeeklySummary == nil
+                        ? 8
+                        : CGFloat(PetPanelMetrics.weeklyCardHorizontalPadding)
+                )
+                .padding(
+                    .vertical,
+                    completeWeeklySummary == nil
+                        ? (leaveTimeText == nil ? 5 : 3)
+                        : CGFloat(PetPanelMetrics.weeklyCardVerticalPadding)
+                )
                 .liquidGlass(
                     in: Capsule(style: .continuous),
                     tint: labelGlassTint,
@@ -135,6 +172,7 @@ struct WorkPetView: View {
                 .offset(y: 2)
                 .animation(.smooth(duration: 0.18), value: labelText)
                 .animation(.smooth(duration: 0.18), value: leaveTimeText)
+                .animation(.smooth(duration: 0.18), value: completeWeeklySummary)
 
             spritePetBody
                 .offset(x: agentUsageCards.isEmpty ? 0 : CGFloat(PetPanelMetrics.agentUsageSpriteOffsetX))
@@ -314,7 +352,10 @@ struct WorkPetView: View {
     }
 
     private func handleClick() {
-        switch PetClickAction.action(for: revealDisplay) {
+        switch PetClickAction.action(
+            for: revealDisplay,
+            needsWeeklyLoginRecovery: model.needsWeeklyLoginRecovery
+        ) {
         case .openLogin:
             openLoginWindow()
         case .revealCapsule:
@@ -364,6 +405,59 @@ struct WorkPetView: View {
     private func showCurrentMessage() {
         withAnimation(.smooth(duration: 0.22)) {
             temporaryMessage = PetVisualState.clickMessage(remaining: model.remaining, elapsed: model.elapsed)
+        }
+    }
+}
+
+private struct WeeklyWorkSummaryRows: View {
+    let summary: WeeklyWorkSummary
+    let color: Color
+
+    private var balanceCopy: WeeklyBalanceCopy {
+        WeeklyWorkCopyFormatter.balanceCopy(summary.balance)
+    }
+
+    var body: some View {
+        VStack(spacing: 1.5) {
+            WeeklyTimeRow(
+                label: "오늘 퇴근",
+                value: DateFormatting.time.string(from: summary.normalTargetAt),
+                color: color
+            )
+            WeeklyTimeRow(
+                label: balanceCopy.label,
+                value: balanceCopy.value,
+                color: color
+            )
+            WeeklyTimeRow(
+                label: "오늘 다 쓰면",
+                value: DateFormatting.time.string(from: summary.allFlexUsedTargetAt),
+                color: color
+            )
+        }
+        .frame(maxWidth: .infinity)
+    }
+}
+
+private struct WeeklyTimeRow: View {
+    let label: String
+    let value: String
+    let color: Color
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text(label)
+                .font(.system(size: 9.6, weight: .medium, design: .rounded))
+                .foregroundStyle(color.opacity(0.72))
+                .lineLimit(1)
+
+            Spacer(minLength: 4)
+
+            Text(value)
+                .font(.system(size: 10.4, weight: .bold, design: .rounded))
+                .foregroundStyle(color)
+                .monospacedDigit()
+                .lineLimit(1)
         }
     }
 }

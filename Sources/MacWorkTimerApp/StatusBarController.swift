@@ -8,11 +8,14 @@ final class StatusBarController: NSObject, NSMenuDelegate {
     private let model: AppModel
     private let statusItem: NSStatusItem
     private let menu = NSMenu()
-    private let loginItem = NSMenuItem(title: "로그인 열기", action: #selector(openWindow), keyEquivalent: "o")
+    private let loginItem = NSMenuItem(title: "GW 로그인 열기", action: #selector(openWindow), keyEquivalent: "o")
     private let workdayModeParentItem = NSMenuItem(title: "근무 형태", action: nil, keyEquivalent: "")
     private let workdayModeMenu = NSMenu()
     private let checkInItem = NSMenuItem()
     private let targetItem = NSMenuItem()
+    private let weeklyBalanceItem = NSMenuItem()
+    private let allFlexUsedTargetItem = NSMenuItem()
+    private let weeklyFetchedAtItem = NSMenuItem()
     private let remainingItem = NSMenuItem()
     private let progressItem = NSMenuItem()
     private let agentUsageItem = NSMenuItem()
@@ -45,12 +48,21 @@ final class StatusBarController: NSObject, NSMenuDelegate {
         menu.delegate = self
         checkInItem.isEnabled = false
         targetItem.isEnabled = false
+        weeklyBalanceItem.isEnabled = false
+        allFlexUsedTargetItem.isEnabled = false
+        weeklyFetchedAtItem.isEnabled = false
         remainingItem.isEnabled = false
         progressItem.isEnabled = false
         agentUsageItem.isEnabled = false
         configureWorkdayModeMenu()
 
         menu.addItem(remainingItem)
+        menu.addItem(checkInItem)
+        menu.addItem(targetItem)
+        menu.addItem(weeklyBalanceItem)
+        menu.addItem(allFlexUsedTargetItem)
+        menu.addItem(weeklyFetchedAtItem)
+        menu.addItem(progressItem)
         menu.addItem(agentUsageItem)
         menu.addItem(.separator())
         menu.addItem(loginItem)
@@ -110,11 +122,11 @@ final class StatusBarController: NSObject, NSMenuDelegate {
         }
 
         let hasSession = model.currentSession != nil
-        loginItem.isHidden = hasSession
+        loginItem.isHidden = hasSession && !model.needsWeeklyLoginRecovery
 
         if let session = model.currentSession {
             checkInItem.title = "출근 \(DateFormatting.time.string(from: session.workStartAt))"
-            targetItem.title = "퇴근 목표 \(DateFormatting.time.string(from: session.targetAt))"
+            targetItem.title = "오늘 퇴근 \(DateFormatting.time.string(from: session.targetAt))"
             remainingItem.title = "남은 시간 \(DateFormatting.digital(remaining))"
             progressItem.title = "진행률 \(Int((model.progress * 100).rounded()))%"
         } else {
@@ -122,6 +134,18 @@ final class StatusBarController: NSObject, NSMenuDelegate {
             targetItem.title = "출근 기록 없음"
             remainingItem.title = "남은 시간 --"
             progressItem.title = "진행률 --"
+        }
+        if let summary = model.weeklySummary, summary.isComplete {
+            weeklyBalanceItem.isHidden = false
+            allFlexUsedTargetItem.isHidden = false
+            weeklyFetchedAtItem.isHidden = false
+            weeklyBalanceItem.title = WeeklyWorkCopyFormatter.balanceLine(summary.balance)
+            allFlexUsedTargetItem.title = "오늘 다 쓰면 \(DateFormatting.time.string(from: summary.allFlexUsedTargetAt))"
+            weeklyFetchedAtItem.title = "마지막 확인 \(DateFormatting.time.string(from: summary.fetchedAt))"
+        } else {
+            weeklyBalanceItem.isHidden = true
+            allFlexUsedTargetItem.isHidden = true
+            weeklyFetchedAtItem.isHidden = true
         }
         if let agentUsageLine = model.agentUsageLine {
             agentUsageItem.isHidden = false
@@ -142,11 +166,18 @@ final class StatusBarController: NSObject, NSMenuDelegate {
         guard let session = model.currentSession else {
             return "GW 로그인 후 출근 기록을 읽습니다."
         }
-        if let usage = model.agentUsageLine {
-            return "출근 \(DateFormatting.time.string(from: session.workStartAt)) · 목표 \(DateFormatting.time.string(from: session.targetAt)) · \(usage)"
+        var parts = [
+            "출근 \(DateFormatting.time.string(from: session.workStartAt))",
+            "오늘 퇴근 \(DateFormatting.time.string(from: session.targetAt))"
+        ]
+        if let summary = model.weeklySummary, summary.isComplete {
+            parts.append(WeeklyWorkCopyFormatter.balanceLine(summary.balance))
+            parts.append("오늘 다 쓰면 \(DateFormatting.time.string(from: summary.allFlexUsedTargetAt))")
         }
-
-        return "출근 \(DateFormatting.time.string(from: session.workStartAt)) · 목표 \(DateFormatting.time.string(from: session.targetAt))"
+        if let usage = model.agentUsageLine {
+            parts.append(usage)
+        }
+        return parts.joined(separator: " · ")
     }
 
     private func titleColor(urgency: Double, hasSession: Bool) -> NSColor {

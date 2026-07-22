@@ -6,13 +6,66 @@ final class MainWindowPresentationPolicyTests: XCTestCase {
         XCTAssertFalse(MainWindowPresentationPolicy.shouldShowMainWindowOnLaunch)
     }
 
-    func testLoginWindowOpensOnlyWhenSessionIsMissing() {
-        XCTAssertTrue(MainWindowPresentationPolicy.shouldOpenLoginWindow(hasSession: false))
-        XCTAssertFalse(MainWindowPresentationPolicy.shouldOpenLoginWindow(hasSession: true))
+    func testLoginWindowOpensWhenSessionIsMissingOrWeeklyLoginNeedsRecovery() {
+        XCTAssertTrue(
+            MainWindowPresentationPolicy.shouldOpenLoginWindow(
+                hasSession: false,
+                needsWeeklyLoginRecovery: false
+            )
+        )
+        XCTAssertTrue(
+            MainWindowPresentationPolicy.shouldOpenLoginWindow(
+                hasSession: true,
+                needsWeeklyLoginRecovery: true
+            )
+        )
+        XCTAssertFalse(
+            MainWindowPresentationPolicy.shouldOpenLoginWindow(
+                hasSession: true,
+                needsWeeklyLoginRecovery: false
+            )
+        )
     }
 
-    func testMainWindowHidesAfterSessionStarts() {
-        XCTAssertTrue(MainWindowPresentationPolicy.shouldHideMainWindow(hasSession: true))
-        XCTAssertFalse(MainWindowPresentationPolicy.shouldHideMainWindow(hasSession: false))
+    func testMainWindowStaysVisibleWhileWeeklyLoginNeedsRecovery() {
+        XCTAssertTrue(
+            MainWindowPresentationPolicy.shouldHideMainWindow(
+                hasSession: true,
+                needsWeeklyLoginRecovery: false
+            )
+        )
+        XCTAssertFalse(
+            MainWindowPresentationPolicy.shouldHideMainWindow(
+                hasSession: true,
+                needsWeeklyLoginRecovery: true
+            )
+        )
+        XCTAssertFalse(
+            MainWindowPresentationPolicy.shouldHideMainWindow(
+                hasSession: false,
+                needsWeeklyLoginRecovery: false
+            )
+        )
+    }
+
+    func testWeeklyLoginRecoveryNeedsSessionWithoutCompleteSummary() {
+        XCTAssertTrue(
+            MainWindowPresentationPolicy.needsWeeklyLoginRecovery(
+                hasSession: true,
+                hasCompleteWeeklySummary: false
+            )
+        )
+        XCTAssertFalse(
+            MainWindowPresentationPolicy.needsWeeklyLoginRecovery(
+                hasSession: true,
+                hasCompleteWeeklySummary: true
+            )
+        )
+        XCTAssertFalse(
+            MainWindowPresentationPolicy.needsWeeklyLoginRecovery(
+                hasSession: false,
+                hasCompleteWeeklySummary: false
+            )
+        )
     }
 }

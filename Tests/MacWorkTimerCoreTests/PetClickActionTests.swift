@@ -13,4 +13,14 @@ final class PetClickActionTests: XCTestCase {
     func testVisiblePetShowsStatusMessage() {
         XCTAssertEqual(PetClickAction.action(for: .petVisible("specter")), .showStatusMessage)
     }
+
+    func testVisiblePetOpensLoginWhenWeeklySummaryNeedsRecovery() {
+        XCTAssertEqual(
+            PetClickAction.action(
+                for: .petVisible("specter"),
+                needsWeeklyLoginRecovery: true
+            ),
+            .openLogin
+        )
+    }
 }

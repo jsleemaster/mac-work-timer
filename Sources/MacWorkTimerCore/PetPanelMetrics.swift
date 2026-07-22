@@ -18,6 +18,9 @@ public enum PetPanelMetrics {
     public static let agentUsageGridOffsetY: Double = 74
     public static let singleLineSpriteOffsetY: Double = 36
     public static let twoLineSpriteOffsetY: Double = 50
+    public static let threeLineSpriteOffsetY: Double = 64
+    public static let weeklyCardHorizontalPadding: Double = 10
+    public static let weeklyCardVerticalPadding: Double = 6
     public static let localSpriteWidth: Double = 90
     public static let localSpriteHeight: Double = 98
     public static let localImageWidth: Double = 84
@@ -27,10 +30,25 @@ public enum PetPanelMetrics {
     public static let minimumBottomMargin: Double = 5
 
     public static func spriteOffsetY(hasLeaveTime: Bool) -> Double {
-        hasLeaveTime ? twoLineSpriteOffsetY : singleLineSpriteOffsetY
+        spriteOffsetY(labelLineCount: hasLeaveTime ? 2 : 1)
+    }
+
+    public static func spriteOffsetY(labelLineCount: Int) -> Double {
+        switch labelLineCount {
+        case ...1:
+            return singleLineSpriteOffsetY
+        case 2:
+            return twoLineSpriteOffsetY
+        default:
+            return threeLineSpriteOffsetY
+        }
     }
 
     public static func localSpriteVisualBottom(hasLeaveTime: Bool) -> Double {
-        spriteOffsetY(hasLeaveTime: hasLeaveTime) + (localSpriteHeight * maxScale) + maxFloatOffset
+        localSpriteVisualBottom(labelLineCount: hasLeaveTime ? 2 : 1)
+    }
+
+    public static func localSpriteVisualBottom(labelLineCount: Int) -> Double {
+        spriteOffsetY(labelLineCount: labelLineCount) + (localSpriteHeight * maxScale) + maxFloatOffset
     }
 }
