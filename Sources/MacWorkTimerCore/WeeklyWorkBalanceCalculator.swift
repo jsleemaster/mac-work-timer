@@ -74,6 +74,20 @@ public struct WeeklyWorkBalanceCalculator: Sendable {
         )
     }
 
+    public func summary(
+        cache: WeeklyAttendanceCache,
+        todaySession: WorkSession
+    ) -> WeeklyWorkSummary? {
+        guard cache.weekStart == weekStartString(containing: todaySession.workStartAt) else {
+            return nil
+        }
+        return summary(
+            records: cache.records,
+            todaySession: todaySession,
+            fetchedAt: cache.fetchedAt
+        )
+    }
+
     private func creditedDuration(forDayRecords records: [WeeklyAttendanceRecord]) -> TimeInterval {
         let creditedLeave = records.reduce(0) { total, record in
             total + max(0, record.creditedDuration)

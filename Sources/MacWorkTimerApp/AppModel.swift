@@ -67,6 +67,22 @@ final class AppModel: NSObject, ObservableObject {
         state.currentSession(on: now, clock: clock)
     }
 
+    var weeklySummary: WeeklyWorkSummary? {
+        guard let currentSession,
+              let cache = state.weeklyAttendanceCache else {
+            return nil
+        }
+        return weeklyCalculator.summary(cache: cache, todaySession: currentSession)
+    }
+
+    var effectiveTargetAt: Date? {
+        guard let currentSession else { return nil }
+        guard let weeklySummary, weeklySummary.isComplete else {
+            return currentSession.targetAt
+        }
+        return weeklySummary.allFlexUsedTargetAt
+    }
+
     var elapsed: TimeInterval? {
         guard let currentSession else {
             return nil
@@ -75,17 +91,21 @@ final class AppModel: NSObject, ObservableObject {
     }
 
     var remaining: TimeInterval? {
-        guard let currentSession else {
+        guard let effectiveTargetAt else {
             return nil
         }
-        return clock.remainingTime(for: currentSession, at: now)
+        return max(0, effectiveTargetAt.timeIntervalSince(now))
     }
 
     var progress: Double {
-        guard let elapsed, let currentSession else {
+        guard let elapsed,
+              let currentSession,
+              let effectiveTargetAt else {
             return 0
         }
-        return min(1, max(0, elapsed / currentSession.workdayDuration))
+        let effectiveDuration = effectiveTargetAt.timeIntervalSince(currentSession.workStartAt)
+        guard effectiveDuration > 0 else { return 1 }
+        return min(1, max(0, elapsed / effectiveDuration))
     }
 
     var workdayMode: WorkdayMode {
@@ -384,16 +404,17 @@ final class AppModel: NSObject, ObservableObject {
     }
 
     private func updateNotificationIfNeeded(force: Bool = false) {
-        guard let session = currentSession else {
+        guard let session = currentSession,
+              let effectiveTargetAt else {
             lastNotificationActionKey = nil
             notificationTask?.cancel()
             notificationTask = nil
             return
         }
 
-        let targetKey = "\(session.workDate)|\(session.targetAt.timeIntervalSince1970)"
+        let targetKey = "\(session.workDate)|\(effectiveTargetAt.timeIntervalSince1970)"
 
-        if clock.isComplete(session, at: now) {
+        if now >= effectiveTargetAt {
             guard state.notificationSentForDate != session.workDate else {
                 return
             }
@@ -410,7 +431,10 @@ final class AppModel: NSObject, ObservableObject {
                     return
                 }
 
-                await notificationService.deliverCompletionNotification(for: session)
+                await notificationService.deliverCompletionNotification(
+                    for: session,
+                    targetAt: effectiveTargetAt
+                )
                 guard !Task.isCancelled else {
                     return
                 }
@@ -437,7 +461,11 @@ final class AppModel: NSObject, ObservableObject {
                 return
             }
 
-            await notificationService.scheduleCompletionNotification(for: session, from: now)
+            await notificationService.scheduleCompletionNotification(
+                for: session,
+                targetAt: effectiveTargetAt,
+                from: now
+            )
         }
     }
 

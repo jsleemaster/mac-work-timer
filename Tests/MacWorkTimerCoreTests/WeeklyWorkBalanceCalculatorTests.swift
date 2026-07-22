@@ -138,6 +138,36 @@ final class WeeklyWorkBalanceCalculatorTests: XCTestCase {
         XCTAssertEqual(summary.allFlexUsedTargetAt, checkIn)
     }
 
+    func testCacheFromDifferentMondayIsIgnored() throws {
+        let session = WorkSession(
+            workDate: "2026-07-22",
+            workStartAt: try date("2026-07-22", "09:35")
+        )
+        let staleCache = WeeklyAttendanceCache(
+            weekStart: "2026-07-13",
+            fetchedAt: try date("2026-07-17", "18:00"),
+            records: try [attendance("2026-07-17", "09:00", "18:00")]
+        )
+
+        XCTAssertNil(calculator.summary(cache: staleCache, todaySession: session))
+    }
+
+    func testCurrentWeekCacheBuildsSummary() throws {
+        let session = WorkSession(
+            workDate: "2026-07-21",
+            workStartAt: try date("2026-07-21", "09:35")
+        )
+        let cache = WeeklyAttendanceCache(
+            weekStart: "2026-07-20",
+            fetchedAt: try date("2026-07-21", "10:00"),
+            records: try [attendance("2026-07-20", "09:21", "18:44")]
+        )
+
+        let summary = try XCTUnwrap(calculator.summary(cache: cache, todaySession: session))
+
+        XCTAssertEqual(summary.balance, 23 * 60, accuracy: 0.1)
+    }
+
     private func attendance(_ workDate: String, _ checkIn: String, _ checkOut: String) throws -> WeeklyAttendanceRecord {
         WeeklyAttendanceRecord(
             workDate: workDate,
