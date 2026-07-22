@@ -8,6 +8,36 @@
 
 **Tech Stack:** Swift 6.2, Foundation, SwiftUI, AppKit, WebKit, XCTest, Swift Package Manager
 
+## Follow-up: expose GW login recovery and add card padding
+
+### Task 8: Restore the missing weekly card in a real local session
+
+**Files:**
+- Modify: `Sources/MacWorkTimerCore/MainWindowPresentationPolicy.swift`
+- Modify: `Sources/MacWorkTimerCore/PetPanelMetrics.swift`
+- Modify: `Sources/MacWorkTimerApp/MainWindowController.swift`
+- Modify: `Sources/MacWorkTimerApp/StatusBarController.swift`
+- Modify: `Sources/MacWorkTimerApp/Views.swift`
+- Modify: `Sources/MacWorkTimerApp/WorkPetView.swift`
+- Test: `Tests/MacWorkTimerCoreTests/MainWindowPresentationPolicyTests.swift`
+- Test: `Tests/MacWorkTimerCoreTests/PetPanelMetricsTests.swift`
+
+- [ ] **Step 1: Add failing policy and padding metric tests**
+
+Assert that a session with missing weekly data can still open the GW login window, and that weekly card padding is exactly 10pt horizontally and 6pt vertically.
+
+- [ ] **Step 2: Run focused tests and verify RED**
+
+Run `swift test --filter 'MainWindowPresentationPolicyTests|PetPanelMetricsTests'`. Expect failures because the recovery input and padding metrics do not exist.
+
+- [ ] **Step 3: Implement the smallest recovery and padding change**
+
+Drive the login surface from both today's session and whether weekly authentication is required. Apply the shared padding metrics only to `WeeklyWorkSummaryRows`.
+
+- [ ] **Step 4: Run focused and full tests, build the app, and inspect the real UI**
+
+Run the focused tests, `swift test`, `scripts/build_app.sh`, code-sign verification, then relaunch the feature bundle. Confirm the login recovery item is visible with an empty cache and the padded three-row card is visible after weekly rows are available.
+
 ---
 
 ## File map
