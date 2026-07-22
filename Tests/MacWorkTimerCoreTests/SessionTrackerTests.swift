@@ -2,6 +2,49 @@ import XCTest
 @testable import MacWorkTimerCore
 
 final class SessionTrackerTests: XCTestCase {
+    func testUpdateWeeklyAttendanceCachePersistsLastSuccessfulRecords() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let store = StateStore(directory: directory)
+        let tracker = SessionTracker(store: store)
+        try store.save(.empty)
+        let cache = WeeklyAttendanceCache(
+            weekStart: "2026-07-20",
+            fetchedAt: Date(timeIntervalSince1970: 1_784_678_400),
+            records: [WeeklyAttendanceRecord(
+                workDate: "2026-07-20",
+                kind: .creditedLeave,
+                creditedDuration: 8 * 60 * 60,
+                sourceText: "2026-07-20 연차"
+            )]
+        )
+
+        let updated = try tracker.updateWeeklyAttendanceCache(cache)
+
+        XCTAssertEqual(updated.weeklyAttendanceCache, cache)
+        XCTAssertEqual(try store.load().weeklyAttendanceCache, cache)
+    }
+
+    func testClearingLoginStateKeepsWeeklyAttendanceCache() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let store = StateStore(directory: directory)
+        let tracker = SessionTracker(store: store)
+        let cache = WeeklyAttendanceCache(
+            weekStart: "2026-07-20",
+            fetchedAt: Date(timeIntervalSince1970: 1_784_678_400),
+            records: []
+        )
+        try store.save(AppState(
+            todaySession: nil,
+            gwStatus: .notConfigured,
+            notificationSentForDate: nil,
+            weeklyAttendanceCache: cache
+        ))
+
+        let updated = try tracker.clearSessionAndGWStatus()
+
+        XCTAssertEqual(updated.weeklyAttendanceCache, cache)
+    }
+
     func testStartOrResumeCreatesTodaySessionWhenStoredSessionIsStale() throws {
         let clock = WorkdayClock(timeZone: TimeZone(identifier: "Asia/Seoul")!)
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)

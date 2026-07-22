@@ -110,19 +110,22 @@ public struct AppState: Codable, Equatable, Sendable {
     public var notificationSentForDate: String?
     public var petReveal: PetRevealState?
     public var workdayModeSelection: WorkdayModeSelection?
+    public var weeklyAttendanceCache: WeeklyAttendanceCache?
 
     public init(
         todaySession: WorkSession?,
         gwStatus: GWStatus,
         notificationSentForDate: String?,
         petReveal: PetRevealState? = nil,
-        workdayModeSelection: WorkdayModeSelection? = nil
+        workdayModeSelection: WorkdayModeSelection? = nil,
+        weeklyAttendanceCache: WeeklyAttendanceCache? = nil
     ) {
         self.todaySession = todaySession
         self.gwStatus = gwStatus
         self.notificationSentForDate = notificationSentForDate
         self.petReveal = petReveal
         self.workdayModeSelection = workdayModeSelection
+        self.weeklyAttendanceCache = weeklyAttendanceCache
     }
 
     public static let empty = AppState(
@@ -130,7 +133,8 @@ public struct AppState: Codable, Equatable, Sendable {
         gwStatus: .notConfigured,
         notificationSentForDate: nil,
         petReveal: nil,
-        workdayModeSelection: nil
+        workdayModeSelection: nil,
+        weeklyAttendanceCache: nil
     )
 
     public func currentSession(on date: Date = Date(), clock: WorkdayClock = WorkdayClock()) -> WorkSession? {

@@ -71,8 +71,22 @@ public final class SessionTracker {
     }
 
     @discardableResult
+    public func updateWeeklyAttendanceCache(_ cache: WeeklyAttendanceCache) throws -> AppState {
+        var state = try store.load()
+        state.weeklyAttendanceCache = cache
+        try store.save(state)
+        return state
+    }
+
+    @discardableResult
     public func clearSessionAndGWStatus() throws -> AppState {
-        let state = AppState(todaySession: nil, gwStatus: .notConfigured, notificationSentForDate: nil)
+        let existing = try store.load()
+        let state = AppState(
+            todaySession: nil,
+            gwStatus: .notConfigured,
+            notificationSentForDate: nil,
+            weeklyAttendanceCache: existing.weeklyAttendanceCache
+        )
         try store.save(state)
         return state
     }
