@@ -36,6 +36,28 @@ final class WeeklyWorkBalanceCalculatorTests: XCTestCase {
         XCTAssertEqual(summary.allFlexUsedTargetAt, try date("2026-07-22", "18:26"))
     }
 
+    func testNineMinuteShortageExtendsTodayTargetByNineMinutes() throws {
+        let records = try [
+            attendance("2026-07-20", "09:21", "18:12"),
+            attendance("2026-07-21", "09:21", "18:21")
+        ]
+        let session = WorkSession(
+            workDate: "2026-07-22",
+            workStartAt: try date("2026-07-22", "09:07")
+        )
+
+        let summary = try XCTUnwrap(calculator.summary(
+            records: records,
+            todaySession: session,
+            fetchedAt: try date("2026-07-22", "10:00")
+        ))
+
+        XCTAssertTrue(summary.isComplete)
+        XCTAssertEqual(summary.balance, -9 * 60, accuracy: 0.1)
+        XCTAssertEqual(summary.normalTargetAt, try date("2026-07-22", "18:07"))
+        XCTAssertEqual(summary.allFlexUsedTargetAt, try date("2026-07-22", "18:16"))
+    }
+
     func testLunchDeductionUsesOnlyActualOverlap() throws {
         let partialLunch = try attendance("2026-07-20", "12:30", "18:00")
         let noLunch = try attendance("2026-07-21", "13:00", "18:00")
@@ -97,7 +119,7 @@ final class WeeklyWorkBalanceCalculatorTests: XCTestCase {
 
         XCTAssertTrue(summary.isComplete)
         XCTAssertEqual(summary.balance, -8 * 60 * 60, accuracy: 0.1)
-        XCTAssertEqual(summary.allFlexUsedTargetAt, summary.normalTargetAt)
+        XCTAssertEqual(summary.allFlexUsedTargetAt, try date("2026-07-22", "02:00"))
     }
 
     func testMondayStartsWithZeroBalance() throws {

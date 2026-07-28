@@ -56,7 +56,7 @@ public struct WeeklyWorkBalanceCalculator: Sendable {
         let normalTargetAt = todaySession.targetAt
         let allFlexUsedTargetAt: Date
         if incompleteWorkDates.isEmpty {
-            let adjusted = normalTargetAt.addingTimeInterval(-max(0, balance))
+            let adjusted = normalTargetAt.addingTimeInterval(-balance)
             allFlexUsedTargetAt = max(adjusted, todaySession.workStartAt)
         } else {
             allFlexUsedTargetAt = normalTargetAt
