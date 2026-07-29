@@ -51,6 +51,14 @@ public struct WeeklyWorkBalanceCalculator: Sendable {
             completedDuration += creditedDuration(forDayRecords: dailyRecords)
         }
 
+        let todayCreditedLeave = grouped[todaySession.workDate, default: []].reduce(0) { total, record in
+            guard record.kind == .creditedLeave else {
+                return total
+            }
+            return total + max(0, record.creditedDuration)
+        }
+        completedDuration += todayCreditedLeave
+
         let targetDuration = Double(elapsedWeekdays.count) * Self.dailyTargetDuration
         let balance = completedDuration - targetDuration
         let normalTargetAt = todaySession.targetAt

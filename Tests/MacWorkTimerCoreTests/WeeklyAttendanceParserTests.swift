@@ -37,6 +37,21 @@ final class WeeklyAttendanceParserTests: XCTestCase {
         XCTAssertEqual(records[1].creditedDuration, 4 * 60 * 60)
     }
 
+    func testParsesQuarterDayLeaveAsTwoHourCreditBeforeGenericLeave() throws {
+        let text = """
+        일자\t요일\t출근시각\t출근등록방식\t퇴근시각\t퇴근등록방식\t근태항목\t근태구분
+        2026-07-10\t금\t09:21\t세콤캡스연동\t16:23\t세콤캡스연동\t출퇴근\t정상
+        2026-07-10\t금\t\t\t\t\t법정휴가\t반반차
+        """
+
+        let records = parser.parse(text)
+
+        XCTAssertEqual(records.count, 2)
+        guard records.count == 2 else { return }
+        XCTAssertEqual(records[1].kind, .creditedLeave)
+        XCTAssertEqual(records[1].creditedDuration, 2 * 60 * 60)
+    }
+
     func testKeepsBlankCurrentCheckoutAndExplicitAbsence() throws {
         let text = """
         일자\t요일\t출근시각\t출근등록방식\t퇴근시각\t퇴근등록방식\t근태항목\t근태구분

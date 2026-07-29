@@ -214,27 +214,26 @@ public extension AppState {
     }
 
     private func selectPetID(from availablePetIDs: [String], picker: ([String]) -> String?) -> String {
-        guard !availablePetIDs.isEmpty else {
-            return PetRevealState.defaultPetID
-        }
+        let candidates = petCandidates(from: availablePetIDs)
 
-        if availablePetIDs.count == 1, let onlyPetID = availablePetIDs.first {
+        if candidates.count == 1, let onlyPetID = candidates.first {
             return onlyPetID
         }
 
-        if let selectedPetID = picker(availablePetIDs), availablePetIDs.contains(selectedPetID) {
+        if let selectedPetID = picker(candidates), candidates.contains(selectedPetID) {
             return selectedPetID
         }
 
-        return availablePetIDs.randomElement() ?? PetRevealState.defaultPetID
+        return candidates.randomElement() ?? PetRevealState.defaultPetID
     }
 
     private func resolvedPetID(_ petID: String, availablePetIDs: [String]) -> String {
-        guard !availablePetIDs.isEmpty else {
-            return PetRevealState.defaultPetID
-        }
+        let candidates = petCandidates(from: availablePetIDs)
+        return candidates.contains(petID) ? petID : PetRevealState.defaultPetID
+    }
 
-        return availablePetIDs.contains(petID) ? petID : (availablePetIDs.first ?? PetRevealState.defaultPetID)
+    private func petCandidates(from availablePetIDs: [String]) -> [String] {
+        [PetRevealState.defaultPetID] + availablePetIDs.filter { $0 != PetRevealState.defaultPetID }
     }
 }
 
