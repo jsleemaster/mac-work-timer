@@ -148,7 +148,11 @@ final class SessionTrackerTests: XCTestCase {
         let state = AppState.empty
         try store.save(state)
 
-        let updated = try tracker.completePetReveal(for: "2026-05-19", availablePetIDs: ["mint"], picker: { $0.first })
+        let updated = try tracker.completePetReveal(
+            for: "2026-05-19",
+            availablePetIDs: ["mint"],
+            picker: { _ in "mint" }
+        )
         let loaded = try store.load()
 
         XCTAssertEqual(updated.petReveal?.selectedPetID, "mint")

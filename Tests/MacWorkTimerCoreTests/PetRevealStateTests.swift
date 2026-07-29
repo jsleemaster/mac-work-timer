@@ -23,7 +23,7 @@ final class PetRevealStateTests: XCTestCase {
         let session = WorkSession(workDate: clock.workDate(for: start), workStartAt: start)
         var state = AppState(todaySession: session, gwStatus: .notConfigured, notificationSentForDate: nil)
 
-        state.completePetReveal(for: session.workDate, availablePetIDs: ["mint"], picker: { $0.first })
+        state.completePetReveal(for: session.workDate, availablePetIDs: ["mint"], picker: { _ in "mint" })
 
         XCTAssertEqual(state.petRevealDisplay(on: start, clock: clock, availablePetIDs: ["mint"]), .petVisible("mint"))
         XCTAssertEqual(state.petReveal?.workDate, "2026-05-19")
@@ -41,12 +41,35 @@ final class PetRevealStateTests: XCTestCase {
         XCTAssertEqual(state.petRevealDisplay(on: nextStart, clock: clock, availablePetIDs: ["mint"]), .capsuleIdle)
     }
 
-    func testSingleRegisteredPetIsAlwaysSelected() throws {
+    func testRegisteredPetCanBeSelectedAlongsideDefaultPet() throws {
         var state = AppState.empty
 
-        state.completePetReveal(for: "2026-05-19", availablePetIDs: ["mint"], picker: { _ in nil })
+        state.completePetReveal(for: "2026-05-19", availablePetIDs: ["mint"], picker: { _ in "mint" })
 
         XCTAssertEqual(state.petReveal?.selectedPetID, "mint")
+    }
+
+    func testDefaultWaitingPetParticipatesInRevealSelection() throws {
+        let clock = WorkdayClock(timeZone: TimeZone(identifier: "Asia/Seoul")!)
+        let start = try date(clock: clock, year: 2026, month: 5, day: 19, hour: 9, minute: 25)
+        let session = WorkSession(workDate: clock.workDate(for: start), workStartAt: start)
+        var state = AppState(todaySession: session, gwStatus: .notConfigured, notificationSentForDate: nil)
+
+        state.completePetReveal(
+            for: session.workDate,
+            availablePetIDs: ["mint"],
+            picker: { candidates in
+                candidates.contains(PetRevealState.defaultPetID)
+                    ? PetRevealState.defaultPetID
+                    : nil
+            }
+        )
+
+        XCTAssertEqual(state.petReveal?.selectedPetID, PetRevealState.defaultPetID)
+        XCTAssertEqual(
+            state.petRevealDisplay(on: start, clock: clock, availablePetIDs: ["mint"]),
+            .petVisible(PetRevealState.defaultPetID)
+        )
     }
 
     func testMissingRegisteredPetsUseDefaultPetFallback() throws {

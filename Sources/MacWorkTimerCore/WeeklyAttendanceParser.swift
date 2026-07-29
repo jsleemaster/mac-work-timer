@@ -38,6 +38,15 @@ public struct WeeklyAttendanceParser: Sendable {
             return nil
         }
 
+        if row.contains("반반차") {
+            return WeeklyAttendanceRecord(
+                workDate: workDate,
+                kind: .creditedLeave,
+                creditedDuration: 2 * 60 * 60,
+                sourceText: row
+            )
+        }
+
         if row.contains("오전반차") || row.contains("오후반차") {
             return WeeklyAttendanceRecord(
                 workDate: workDate,

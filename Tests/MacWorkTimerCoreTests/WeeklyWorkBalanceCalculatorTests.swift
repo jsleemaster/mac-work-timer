@@ -58,6 +58,33 @@ final class WeeklyWorkBalanceCalculatorTests: XCTestCase {
         XCTAssertEqual(summary.allFlexUsedTargetAt, try date("2026-07-22", "18:16"))
     }
 
+    func testTodayQuarterDayLeaveCreditsTwoHoursTowardWeeklyBalance() throws {
+        let records = try [
+            attendance("2026-07-27", "09:14", "18:05"),
+            attendance("2026-07-28", "09:07", "18:17"),
+            WeeklyAttendanceRecord(
+                workDate: "2026-07-29",
+                kind: .creditedLeave,
+                creditedDuration: 2 * 60 * 60,
+                sourceText: "2026-07-29 법정휴가 반반차"
+            )
+        ]
+        let session = WorkSession(
+            workDate: "2026-07-29",
+            workStartAt: try date("2026-07-29", "09:31")
+        )
+
+        let summary = try XCTUnwrap(calculator.summary(
+            records: records,
+            todaySession: session,
+            fetchedAt: try date("2026-07-29", "10:00")
+        ))
+
+        XCTAssertEqual(summary.balance, 2 * 60 * 60 + 60, accuracy: 0.1)
+        XCTAssertEqual(summary.normalTargetAt, try date("2026-07-29", "18:31"))
+        XCTAssertEqual(summary.allFlexUsedTargetAt, try date("2026-07-29", "16:30"))
+    }
+
     func testLunchDeductionUsesOnlyActualOverlap() throws {
         let partialLunch = try attendance("2026-07-20", "12:30", "18:00")
         let noLunch = try attendance("2026-07-21", "13:00", "18:00")
