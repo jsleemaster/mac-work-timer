@@ -261,11 +261,10 @@ struct WorkPetView: View {
     private func petBody(image: NSImage?, petID: String, stage: PetEvolutionStage, blink: Bool, time: TimeInterval) -> some View {
         ZStack {
             if let image {
-                if petID == PetAsset.localEvolutionPetID {
+                if PetAsset.isLocalPet(petID) {
                     LocalEvolutionPetImage(
                         image: image,
                         stage: stage,
-                        blink: blink,
                         time: time
                     )
                 } else {
@@ -845,7 +844,6 @@ private extension PetVisualState {
 
 private enum PetAsset {
     static let builtInSpecterPetID = "specter"
-    static let localEvolutionPetID = LocalPetCatalog.legacyPetID
 
     static var availablePetIDs: [String] {
         availablePetIDsCache
@@ -902,6 +900,10 @@ private enum PetAsset {
         }
 
         return 3
+    }
+
+    static func isLocalPet(_ petID: String) -> Bool {
+        localPetDescriptor(for: petID) != nil
     }
 
     static func capsuleFrame(phase: CapsuleRevealPhase, at time: TimeInterval) -> NSImage? {
@@ -1035,8 +1037,20 @@ private enum PetAsset {
         }
 
         let index = min(max(0, stageIndex), descriptor.stageImageURLs.count - 1)
-        return NSImage(contentsOf: descriptor.stageImageURLs[index])
+        return localPetStageCache["\(petID)-\(index)"]
     }
+
+    private static let localPetStageCache: [String: NSImage] = {
+        var cache: [String: NSImage] = [:]
+        for descriptor in localPetDescriptors {
+            for (index, url) in descriptor.stageImageURLs.enumerated() {
+                if let image = NSImage(contentsOf: url) {
+                    cache["\(descriptor.id)-\(index)"] = image
+                }
+            }
+        }
+        return cache
+    }()
 
     private static func localPetDescriptor(for petID: String) -> LocalPetDescriptor? {
         localPetDescriptors.first { $0.id == petID }
@@ -1249,74 +1263,24 @@ private struct SpecterPetBody: View {
 private struct LocalEvolutionPetImage: View {
     let image: NSImage
     let stage: PetEvolutionStage
-    let blink: Bool
     let time: TimeInterval
 
     private var floatOffset: CGFloat {
         CGFloat(sin(time * 2.2) * 1.8)
     }
 
+    // Local stage images are finished artwork with their own faces, so no synthetic
+    // eyelids are drawn over them; only the art-agnostic float and scale are applied.
     var body: some View {
-        ZStack {
-            Image(nsImage: image)
-                .resizable()
-                .interpolation(.high)
-                .scaledToFit()
-                .frame(width: PetPanelMetrics.localImageWidth, height: PetPanelMetrics.localImageHeight)
-
-            LocalPetBlinkOverlay(stage: stage)
-                .opacity(blink ? 1 : 0)
-                .animation(.smooth(duration: 0.08), value: blink)
-        }
-        .frame(width: PetPanelMetrics.localSpriteWidth, height: PetPanelMetrics.localSpriteHeight)
-        .offset(y: floatOffset)
-        .scaleEffect(stage == .final ? PetPanelMetrics.maxScale : 0.98)
+        Image(nsImage: image)
+            .resizable()
+            .interpolation(.high)
+            .scaledToFit()
+            .frame(width: PetPanelMetrics.localImageWidth, height: PetPanelMetrics.localImageHeight)
+            .frame(width: PetPanelMetrics.localSpriteWidth, height: PetPanelMetrics.localSpriteHeight)
+            .offset(y: floatOffset)
+            .scaleEffect(stage == .final ? PetPanelMetrics.maxScale : 0.98)
     }
-}
-
-private struct LocalPetBlinkOverlay: View {
-    let stage: PetEvolutionStage
-
-    var body: some View {
-        ZStack {
-            ForEach(Array(eyes.enumerated()), id: \.offset) { _, eye in
-                Capsule(style: .continuous)
-                    .fill(eye.color)
-                    .frame(width: eye.size.width, height: eye.size.height)
-                    .rotationEffect(.degrees(eye.rotation))
-                    .position(eye.position)
-            }
-        }
-        .frame(width: PetPanelMetrics.localSpriteWidth, height: PetPanelMetrics.localSpriteHeight)
-        .allowsHitTesting(false)
-    }
-
-    private var eyes: [BlinkEye] {
-        switch stage {
-        case .base:
-            return [
-                BlinkEye(position: CGPoint(x: 29, y: 39), size: CGSize(width: 24, height: 13), rotation: -10, color: Color.black.opacity(0.96)),
-                BlinkEye(position: CGPoint(x: 52, y: 37), size: CGSize(width: 24, height: 13), rotation: 10, color: Color.black.opacity(0.96))
-            ]
-        case .middle:
-            return [
-                BlinkEye(position: CGPoint(x: 33, y: 30), size: CGSize(width: 21, height: 9), rotation: -7, color: Color(red: 0.32, green: 0.30, blue: 0.44).opacity(0.94)),
-                BlinkEye(position: CGPoint(x: 52, y: 32), size: CGSize(width: 22, height: 9), rotation: 5, color: Color(red: 0.32, green: 0.30, blue: 0.44).opacity(0.94))
-            ]
-        case .final:
-            return [
-                BlinkEye(position: CGPoint(x: 30, y: 31), size: CGSize(width: 24, height: 10), rotation: 11, color: Color(red: 0.30, green: 0.25, blue: 0.48).opacity(0.96)),
-                BlinkEye(position: CGPoint(x: 54, y: 31), size: CGSize(width: 24, height: 10), rotation: -11, color: Color(red: 0.30, green: 0.25, blue: 0.48).opacity(0.96))
-            ]
-        }
-    }
-}
-
-private struct BlinkEye {
-    let position: CGPoint
-    let size: CGSize
-    let rotation: Double
-    let color: Color
 }
 
 private struct SpecterFace: View {

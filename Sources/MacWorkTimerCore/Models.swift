@@ -275,11 +275,22 @@ public extension AppState {
 
     private func resolvedPetID(_ petID: String, availablePetIDs: [String]) -> String {
         let candidates = petCandidates(from: availablePetIDs)
-        return candidates.contains(petID) ? petID : PetRevealState.defaultPetID
+        if candidates.contains(petID) {
+            return petID
+        }
+
+        return candidates.first ?? PetRevealState.defaultPetID
     }
 
+    /// Installing personal pets under the local pet directory is an explicit opt-in,
+    /// so those stages replace the bundled sample pets instead of competing with them.
     private func petCandidates(from availablePetIDs: [String]) -> [String] {
-        [PetRevealState.defaultPetID] + availablePetIDs.filter { $0 != PetRevealState.defaultPetID }
+        let localPetIDs = availablePetIDs.filter { $0.hasPrefix(LocalPetCatalog.petIDPrefix) }
+        if !localPetIDs.isEmpty {
+            return localPetIDs
+        }
+
+        return [PetRevealState.defaultPetID] + availablePetIDs.filter { $0 != PetRevealState.defaultPetID }
     }
 }
 
