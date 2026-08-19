@@ -16,7 +16,8 @@ final class StatusBarController: NSObject, NSMenuDelegate {
     private let weeklyBalanceItem = NSMenuItem()
     private let weeklyOvertimeItem = NSMenuItem()
     private let weeklyHolidayItem = NSMenuItem()
-    private let todayHolidayItem = NSMenuItem()
+    private let holidayParentItem = NSMenuItem(title: "휴일로 표시", action: nil, keyEquivalent: "")
+    private let holidayMenu = NSMenu()
     private let allFlexUsedTargetItem = NSMenuItem()
     private let weeklyFetchedAtItem = NSMenuItem()
     private let remainingItem = NSMenuItem()
@@ -72,8 +73,13 @@ final class StatusBarController: NSObject, NSMenuDelegate {
         menu.addItem(.separator())
         menu.addItem(loginItem)
         menu.addItem(workdayModeParentItem)
-        todayHolidayItem.action = #selector(toggleTodayHoliday)
-        menu.addItem(todayHolidayItem)
+        holidayMenu.delegate = self
+        // Locked GW holidays keep an action so the checkmark reads as a real state, so the
+        // enabled flag has to be honored literally rather than inferred from the action.
+        holidayMenu.autoenablesItems = false
+        holidayParentItem.submenu = holidayMenu
+        menu.addItem(holidayParentItem)
+        rebuildHolidayMenu()
         menu.addItem(NSMenuItem(title: "출근 기록 다시 조회", action: #selector(refreshAttendance), keyEquivalent: "r"))
         petItem.action = #selector(togglePet)
         menu.addItem(petItem)
@@ -81,6 +87,7 @@ final class StatusBarController: NSObject, NSMenuDelegate {
         revealPetItem.action = #selector(revealPet)
         menu.addItem(revealPetItem)
         menu.addItem(.separator())
+        menu.addItem(NSMenuItem(title: "설정…", action: #selector(openSettings), keyEquivalent: ","))
         menu.addItem(NSMenuItem(title: "종료", action: #selector(quit), keyEquivalent: "q"))
 
         for item in menu.items {
@@ -105,10 +112,20 @@ final class StatusBarController: NSObject, NSMenuDelegate {
     }
 
     func menuWillOpen(_ menu: NSMenu) {
+        guard menu !== holidayMenu else {
+            return
+        }
         update()
     }
 
+    /// The holiday submenu is rebuilt only when it is about to be shown. `update()` runs every
+    /// second from the timer, and swapping items out from under an open submenu would fight the
+    /// user's pointer.
     func menuNeedsUpdate(_ menu: NSMenu) {
+        guard menu !== holidayMenu else {
+            rebuildHolidayMenu()
+            return
+        }
         update()
     }
 
@@ -147,7 +164,6 @@ final class StatusBarController: NSObject, NSMenuDelegate {
             remainingItem.title = "남은 시간 --"
             progressItem.title = "진행률 --"
         }
-        updateTodayHolidayItem()
         if let summary = model.weeklySummary, summary.isComplete {
             weeklyBalanceItem.isHidden = false
             allFlexUsedTargetItem.isHidden = false
@@ -190,22 +206,26 @@ final class StatusBarController: NSObject, NSMenuDelegate {
         petItem.title = PetWindowController.shared.isVisible ? "펫 숨기기" : "펫 보이기"
     }
 
-    /// GW-derived holidays are shown checked but locked, because unchecking them here would
-    /// only be overwritten by the next weekly refresh.
-    private func updateTodayHolidayItem() {
-        if model.isTodayHoliday && !model.isTodayManualHoliday {
-            todayHolidayItem.title = "오늘은 GW 기준 휴일"
-            todayHolidayItem.state = .on
-            todayHolidayItem.isEnabled = false
-            todayHolidayItem.action = nil
-            return
+    /// Lists this week's weekdays so a day that has already passed can be marked a holiday too,
+    /// and not just today. GW-derived holidays are shown checked but locked, because unchecking
+    /// them here would only be overwritten by the next weekly refresh.
+    private func rebuildHolidayMenu() {
+        holidayMenu.removeAllItems()
+
+        for option in model.holidayMenuOptions {
+            let item = NSMenuItem(title: option.label, action: #selector(toggleHoliday(_:)), keyEquivalent: "")
+            item.state = option.isHoliday ? .on : .off
+            item.representedObject = option.workDate
+            item.isEnabled = !option.isLocked
+            item.target = self
+            holidayMenu.addItem(item)
         }
 
-        todayHolidayItem.title = "오늘 휴일로 표시"
-        todayHolidayItem.state = model.isTodayManualHoliday ? .on : .off
-        todayHolidayItem.isEnabled = true
-        todayHolidayItem.action = #selector(toggleTodayHoliday)
-        todayHolidayItem.target = self
+        holidayMenu.addItem(.separator())
+        let otherDatesItem = NSMenuItem(title: "다른 날짜…", action: #selector(openSettings), keyEquivalent: "")
+        otherDatesItem.isEnabled = true
+        otherDatesItem.target = self
+        holidayMenu.addItem(otherDatesItem)
     }
 
     private func tooltip() -> String {
@@ -259,9 +279,17 @@ final class StatusBarController: NSObject, NSMenuDelegate {
         update()
     }
 
-    @objc private func toggleTodayHoliday() {
-        model.toggleTodayHoliday()
+    @objc private func toggleHoliday(_ sender: NSMenuItem) {
+        guard let workDate = sender.representedObject as? String else {
+            return
+        }
+
+        model.toggleHoliday(for: workDate)
         update()
+    }
+
+    @objc private func openSettings() {
+        SettingsWindowController.shared.show()
     }
 
     @objc private func togglePet() {
