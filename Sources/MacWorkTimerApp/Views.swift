@@ -132,6 +132,10 @@ private struct HolidaySettingsSection: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+            Text("지난 날짜도 등록할 수 있습니다. 이번 주 안의 날짜라면 주간 집계가 바로 다시 계산됩니다.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
 
             HStack(spacing: 8) {
                 DatePicker("", selection: $draftDate, displayedComponents: .date)

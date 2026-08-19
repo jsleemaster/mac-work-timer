@@ -180,6 +180,27 @@ final class SessionTrackerTests: XCTestCase {
         XCTAssertNil(try store.load().currentSession(on: start, clock: clock))
     }
 
+    func testSettingHolidayOnAPastDateKeepsTodaysRunningSession() throws {
+        let clock = WorkdayClock(timeZone: TimeZone(identifier: "Asia/Seoul")!)
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let store = StateStore(directory: directory)
+        let tracker = SessionTracker(clock: clock, store: store)
+        let start = try XCTUnwrap(DateComponents(calendar: clock.calendar, timeZone: clock.calendar.timeZone, year: 2026, month: 8, day: 19, hour: 9).date)
+        try store.save(AppState(
+            todaySession: WorkSession(workDate: "2026-08-19", workStartAt: start),
+            gwStatus: .notConfigured,
+            notificationSentForDate: "2026-08-19"
+        ))
+
+        // A holiday is usually noticed after the fact, so registering Monday on Wednesday must
+        // leave Wednesday's timer running.
+        let updated = try tracker.setHoliday(true, for: "2026-08-17", title: "창립기념일")
+
+        XCTAssertEqual(updated.holidays, [HolidayEntry(workDate: "2026-08-17", title: "창립기념일")])
+        XCTAssertEqual(updated.todaySession?.workDate, "2026-08-19")
+        XCTAssertEqual(updated.notificationSentForDate, "2026-08-19")
+    }
+
     func testUnsettingHolidayRemovesOnlyThatEntry() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         let store = StateStore(directory: directory)
