@@ -417,6 +417,10 @@ private struct WeeklyWorkSummaryRows: View {
         WeeklyWorkCopyFormatter.balanceCopy(summary.balance)
     }
 
+    private var overtimeCopy: WeeklyBalanceCopy? {
+        WeeklyWorkCopyFormatter.overtimeCopy(summary.overtimeDuration)
+    }
+
     var body: some View {
         VStack(spacing: 1.5) {
             WeeklyTimeRow(
@@ -429,6 +433,13 @@ private struct WeeklyWorkSummaryRows: View {
                 value: balanceCopy.value,
                 color: color
             )
+            if let overtimeCopy {
+                WeeklyTimeRow(
+                    label: overtimeCopy.label,
+                    value: overtimeCopy.value,
+                    color: color
+                )
+            }
             WeeklyTimeRow(
                 label: "오늘 다 쓰면",
                 value: DateFormatting.time.string(from: summary.allFlexUsedTargetAt),

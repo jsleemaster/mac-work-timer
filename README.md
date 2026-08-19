@@ -9,6 +9,7 @@ macOS menu bar app for tracking a 9-hour workday from the GW attendance check-in
 - Reads the current week's GW attendance table without submitting changes.
 - Adds completed work and credited leave toward 40 hours, subtracting only the overlap with the 12:00–13:00 lunch window.
 - Keeps weekly flex time available for any remaining weekday and shows `오늘 퇴근`, `이번 주 여유`, and `오늘 다 쓰면`.
+- Drops holidays from the weekly 40-hour target and reports work done on them as `이번 주 초과근무`.
 - Shows remaining time in the menu bar and a normal SwiftUI window.
 - Shows local Codex/Claude limit status only when a 5-hour or weekly AI limit is hit.
 - Stores app state in `~/Library/Application Support/Mac Work Timer/state.json`.
@@ -66,6 +67,19 @@ Local-only personal pet images can also be stored outside the repository at `~/M
 - `sources.json`
 
 When all three PNG files exist, the app treats them as one local-only evolving pet and keeps those files out of GitHub and public release builds.
+
+## Holidays
+
+A five-day week is not always five working days. Public holidays, substitute holidays, and company closures are treated exactly like weekends: no timer, no pet, no leave notification, and the day is removed from the weekly 40-hour target so a holiday week targets 32 hours instead.
+
+Holidays come from two sources, merged:
+
+- **GW**: rows whose 근태구분 contains `공휴일` (including `대체공휴일`) or `회사휴무` are read from the weekly attendance table. These appear automatically after a weekly refresh and cannot be unset locally.
+- **Manual**: registered in the app for anything GW does not report, such as a company foundation day. Toggle the current day from the menu bar (`오늘 휴일로 표시`), or manage the full list in Settings with a date picker and an optional label. Manual holidays are stored in `state.json` and survive a GW logout.
+
+Personal leave is deliberately not a holiday. `연차`, `휴가`, and half-day rows stay credited leave: the day keeps its 8-hour slot in the weekly target and the leave pays into it. A holiday instead removes the slot, which is what keeps a missing holiday row from marking the week incomplete and disabling the flex-time readout.
+
+Work recorded on a holiday is **overtime, not flex**. It is reported separately as `이번 주 초과근무` and never folded into `이번 주 여유`, so it cannot pull `오늘 다 쓰면` earlier and be silently spent.
 
 ## AI limit indicator
 

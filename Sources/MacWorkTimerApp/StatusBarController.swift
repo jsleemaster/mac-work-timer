@@ -14,6 +14,9 @@ final class StatusBarController: NSObject, NSMenuDelegate {
     private let checkInItem = NSMenuItem()
     private let targetItem = NSMenuItem()
     private let weeklyBalanceItem = NSMenuItem()
+    private let weeklyOvertimeItem = NSMenuItem()
+    private let weeklyHolidayItem = NSMenuItem()
+    private let todayHolidayItem = NSMenuItem()
     private let allFlexUsedTargetItem = NSMenuItem()
     private let weeklyFetchedAtItem = NSMenuItem()
     private let remainingItem = NSMenuItem()
@@ -60,6 +63,8 @@ final class StatusBarController: NSObject, NSMenuDelegate {
         menu.addItem(checkInItem)
         menu.addItem(targetItem)
         menu.addItem(weeklyBalanceItem)
+        menu.addItem(weeklyOvertimeItem)
+        menu.addItem(weeklyHolidayItem)
         menu.addItem(allFlexUsedTargetItem)
         menu.addItem(weeklyFetchedAtItem)
         menu.addItem(progressItem)
@@ -67,6 +72,8 @@ final class StatusBarController: NSObject, NSMenuDelegate {
         menu.addItem(.separator())
         menu.addItem(loginItem)
         menu.addItem(workdayModeParentItem)
+        todayHolidayItem.action = #selector(toggleTodayHoliday)
+        menu.addItem(todayHolidayItem)
         menu.addItem(NSMenuItem(title: "출근 기록 다시 조회", action: #selector(refreshAttendance), keyEquivalent: "r"))
         petItem.action = #selector(togglePet)
         menu.addItem(petItem)
@@ -129,12 +136,18 @@ final class StatusBarController: NSObject, NSMenuDelegate {
             targetItem.title = "오늘 퇴근 \(DateFormatting.time.string(from: session.targetAt))"
             remainingItem.title = "남은 시간 \(DateFormatting.digital(remaining))"
             progressItem.title = "진행률 \(Int((model.progress * 100).rounded()))%"
+        } else if model.isTodayHoliday {
+            checkInItem.title = "오늘은 \(model.holidayCalendar.title(for: model.todayWorkDate) ?? HolidayEntry.defaultTitle)입니다"
+            targetItem.title = "휴일에는 타이머가 쉽니다"
+            remainingItem.title = "남은 시간 --"
+            progressItem.title = "진행률 --"
         } else {
             checkInItem.title = "GW 로그인이 필요합니다"
             targetItem.title = "출근 기록 없음"
             remainingItem.title = "남은 시간 --"
             progressItem.title = "진행률 --"
         }
+        updateTodayHolidayItem()
         if let summary = model.weeklySummary, summary.isComplete {
             weeklyBalanceItem.isHidden = false
             allFlexUsedTargetItem.isHidden = false
@@ -142,8 +155,23 @@ final class StatusBarController: NSObject, NSMenuDelegate {
             weeklyBalanceItem.title = WeeklyWorkCopyFormatter.balanceLine(summary.balance)
             allFlexUsedTargetItem.title = "오늘 다 쓰면 \(DateFormatting.time.string(from: summary.allFlexUsedTargetAt))"
             weeklyFetchedAtItem.title = "마지막 확인 \(DateFormatting.time.string(from: summary.fetchedAt))"
+
+            if let overtime = WeeklyWorkCopyFormatter.overtimeLine(summary.overtimeDuration) {
+                weeklyOvertimeItem.isHidden = false
+                weeklyOvertimeItem.title = overtime
+            } else {
+                weeklyOvertimeItem.isHidden = true
+            }
+            if let holidayLine = WeeklyWorkCopyFormatter.holidayLine(summary.holidayWorkDates) {
+                weeklyHolidayItem.isHidden = false
+                weeklyHolidayItem.title = holidayLine
+            } else {
+                weeklyHolidayItem.isHidden = true
+            }
         } else {
             weeklyBalanceItem.isHidden = true
+            weeklyOvertimeItem.isHidden = true
+            weeklyHolidayItem.isHidden = true
             allFlexUsedTargetItem.isHidden = true
             weeklyFetchedAtItem.isHidden = true
         }
@@ -162,8 +190,29 @@ final class StatusBarController: NSObject, NSMenuDelegate {
         petItem.title = PetWindowController.shared.isVisible ? "펫 숨기기" : "펫 보이기"
     }
 
+    /// GW-derived holidays are shown checked but locked, because unchecking them here would
+    /// only be overwritten by the next weekly refresh.
+    private func updateTodayHolidayItem() {
+        if model.isTodayHoliday && !model.isTodayManualHoliday {
+            todayHolidayItem.title = "오늘은 GW 기준 휴일"
+            todayHolidayItem.state = .on
+            todayHolidayItem.isEnabled = false
+            todayHolidayItem.action = nil
+            return
+        }
+
+        todayHolidayItem.title = "오늘 휴일로 표시"
+        todayHolidayItem.state = model.isTodayManualHoliday ? .on : .off
+        todayHolidayItem.isEnabled = true
+        todayHolidayItem.action = #selector(toggleTodayHoliday)
+        todayHolidayItem.target = self
+    }
+
     private func tooltip() -> String {
         guard let session = model.currentSession else {
+            if model.isTodayHoliday {
+                return "오늘은 \(model.holidayCalendar.title(for: model.todayWorkDate) ?? HolidayEntry.defaultTitle)입니다."
+            }
             return "GW 로그인 후 출근 기록을 읽습니다."
         }
         var parts = [
@@ -172,6 +221,9 @@ final class StatusBarController: NSObject, NSMenuDelegate {
         ]
         if let summary = model.weeklySummary, summary.isComplete {
             parts.append(WeeklyWorkCopyFormatter.balanceLine(summary.balance))
+            if let overtime = WeeklyWorkCopyFormatter.overtimeLine(summary.overtimeDuration) {
+                parts.append(overtime)
+            }
             parts.append("오늘 다 쓰면 \(DateFormatting.time.string(from: summary.allFlexUsedTargetAt))")
         }
         if let usage = model.agentUsageLine {
@@ -204,6 +256,11 @@ final class StatusBarController: NSObject, NSMenuDelegate {
         }
 
         model.setWorkdayMode(mode)
+        update()
+    }
+
+    @objc private func toggleTodayHoliday() {
+        model.toggleTodayHoliday()
         update()
     }
 

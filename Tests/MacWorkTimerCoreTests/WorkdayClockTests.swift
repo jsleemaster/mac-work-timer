@@ -22,6 +22,29 @@ final class WorkdayClockTests: XCTestCase {
         XCTAssertNil(clock.session(for: saturday, existing: nil))
     }
 
+    func testHolidayDoesNotStartSession() throws {
+        let clock = WorkdayClock(timeZone: seoul)
+        let monday = try XCTUnwrap(DateComponents(calendar: clock.calendar, timeZone: seoul, year: 2026, month: 5, day: 18, hour: 9).date)
+
+        XCTAssertNil(clock.session(for: monday, existing: nil, holidayDates: ["2026-05-18"]))
+    }
+
+    func testHolidayDiscardsAStoredSessionFromThatDay() throws {
+        let clock = WorkdayClock(timeZone: seoul)
+        let monday = try XCTUnwrap(DateComponents(calendar: clock.calendar, timeZone: seoul, year: 2026, month: 5, day: 18, hour: 9).date)
+        let later = try XCTUnwrap(DateComponents(calendar: clock.calendar, timeZone: seoul, year: 2026, month: 5, day: 18, hour: 14).date)
+        let existing = WorkSession(workDate: clock.workDate(for: monday), workStartAt: monday)
+
+        XCTAssertNil(clock.session(for: later, existing: existing, holidayDates: ["2026-05-18"]))
+    }
+
+    func testUnrelatedHolidayDoesNotBlockToday() throws {
+        let clock = WorkdayClock(timeZone: seoul)
+        let monday = try XCTUnwrap(DateComponents(calendar: clock.calendar, timeZone: seoul, year: 2026, month: 5, day: 18, hour: 9).date)
+
+        XCTAssertNotNil(clock.session(for: monday, existing: nil, holidayDates: ["2026-05-19"]))
+    }
+
     func testSameDayKeepsExistingStart() throws {
         let clock = WorkdayClock(timeZone: seoul)
         let firstStart = try XCTUnwrap(DateComponents(calendar: clock.calendar, timeZone: seoul, year: 2026, month: 5, day: 19, hour: 8, minute: 52).date)

@@ -111,6 +111,9 @@ public struct AppState: Codable, Equatable, Sendable {
     public var petReveal: PetRevealState?
     public var workdayModeSelection: WorkdayModeSelection?
     public var weeklyAttendanceCache: WeeklyAttendanceCache?
+    /// Holidays the user registered by hand. GW-reported holidays are not stored here;
+    /// they are derived from `weeklyAttendanceCache` so a refresh always wins.
+    public var holidays: [HolidayEntry]
 
     public init(
         todaySession: WorkSession?,
@@ -118,7 +121,8 @@ public struct AppState: Codable, Equatable, Sendable {
         notificationSentForDate: String?,
         petReveal: PetRevealState? = nil,
         workdayModeSelection: WorkdayModeSelection? = nil,
-        weeklyAttendanceCache: WeeklyAttendanceCache? = nil
+        weeklyAttendanceCache: WeeklyAttendanceCache? = nil,
+        holidays: [HolidayEntry] = []
     ) {
         self.todaySession = todaySession
         self.gwStatus = gwStatus
@@ -126,6 +130,37 @@ public struct AppState: Codable, Equatable, Sendable {
         self.petReveal = petReveal
         self.workdayModeSelection = workdayModeSelection
         self.weeklyAttendanceCache = weeklyAttendanceCache
+        self.holidays = holidays
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case todaySession
+        case gwStatus
+        case notificationSentForDate
+        case petReveal
+        case workdayModeSelection
+        case weeklyAttendanceCache
+        case holidays
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.todaySession = try container.decodeIfPresent(WorkSession.self, forKey: .todaySession)
+        self.gwStatus = try container.decode(GWStatus.self, forKey: .gwStatus)
+        self.notificationSentForDate = try container.decodeIfPresent(String.self, forKey: .notificationSentForDate)
+        self.petReveal = try container.decodeIfPresent(PetRevealState.self, forKey: .petReveal)
+        self.workdayModeSelection = try container.decodeIfPresent(WorkdayModeSelection.self, forKey: .workdayModeSelection)
+        self.weeklyAttendanceCache = try container.decodeIfPresent(WeeklyAttendanceCache.self, forKey: .weeklyAttendanceCache)
+        self.holidays = try container.decodeIfPresent([HolidayEntry].self, forKey: .holidays) ?? []
+    }
+
+    /// Manual entries merged with whatever holidays the cached GW week reported.
+    public var holidayCalendar: HolidayCalendar {
+        HolidayCalendar(manualEntries: holidays, records: weeklyAttendanceCache?.records ?? [])
+    }
+
+    public func isHoliday(on date: Date = Date(), clock: WorkdayClock = WorkdayClock()) -> Bool {
+        holidayCalendar.isHoliday(clock.workDate(for: date))
     }
 
     public static let empty = AppState(
@@ -140,6 +175,11 @@ public struct AppState: Codable, Equatable, Sendable {
     public func currentSession(on date: Date = Date(), clock: WorkdayClock = WorkdayClock()) -> WorkSession? {
         let today = clock.workDate(for: date)
         let mode = workdayMode(for: today)
+
+        // Holidays behave like weekends: no session, so no timer, pet, or leave alert.
+        guard !holidayCalendar.isHoliday(today) else {
+            return nil
+        }
 
         if case .attendance(let record) = gwStatus, record.workDate == today {
             return record.session.withWorkdayMode(mode)

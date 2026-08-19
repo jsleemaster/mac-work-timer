@@ -19,12 +19,21 @@ public struct WorkdayClock: Sendable {
         )
     }
 
-    public func session(for now: Date, existing: WorkSession?) -> WorkSession? {
+    public func session(
+        for now: Date,
+        existing: WorkSession?,
+        holidayDates: Set<String> = []
+    ) -> WorkSession? {
         guard !isWeekend(now) else {
             return nil
         }
 
         let today = workDate(for: now)
+        // A holiday is treated exactly like a weekend: no timer, no pet, no leave alert.
+        guard !holidayDates.contains(today) else {
+            return nil
+        }
+
         if let existing, existing.workDate == today {
             return existing
         }

@@ -104,11 +104,74 @@ struct SettingsView: View {
     @EnvironmentObject private var model: AppModel
 
     var body: some View {
-        Toggle("로그인 시 자동 실행", isOn: Binding(
-            get: { model.launchAtLogin },
-            set: { model.setLaunchAtLogin($0) }
-        ))
+        VStack(alignment: .leading, spacing: 18) {
+            Toggle("로그인 시 자동 실행", isOn: Binding(
+                get: { model.launchAtLogin },
+                set: { model.setLaunchAtLogin($0) }
+            ))
+
+            Divider()
+
+            HolidaySettingsSection()
+        }
         .padding(22)
-        .frame(width: 320)
+        .frame(width: 380)
+    }
+}
+
+private struct HolidaySettingsSection: View {
+    @EnvironmentObject private var model: AppModel
+    @State private var draftDate = Date()
+    @State private var draftTitle = ""
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("휴일")
+                .font(.system(size: 13, weight: .semibold))
+            Text("등록한 날은 주말처럼 취급됩니다. 주간 40시간 목표에서 빠지고, 그날 근무한 시간은 여유가 아닌 초과근무로 집계됩니다.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack(spacing: 8) {
+                DatePicker("", selection: $draftDate, displayedComponents: .date)
+                    .labelsHidden()
+                TextField(HolidayEntry.defaultTitle, text: $draftTitle)
+                    .textFieldStyle(.roundedBorder)
+                Button("추가") {
+                    model.setHoliday(true, for: model.workDateText(for: draftDate), title: draftTitle)
+                    draftTitle = ""
+                }
+            }
+
+            if model.holidays.isEmpty {
+                Text("등록된 휴일이 없습니다. GW 근태표의 공휴일은 자동으로 반영됩니다.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                VStack(spacing: 0) {
+                    ForEach(model.holidays, id: \.workDate) { holiday in
+                        HStack {
+                            Text(holiday.workDate)
+                                .font(.system(size: 12, design: .monospaced))
+                            Text(holiday.title)
+                                .font(.system(size: 12))
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                            Button {
+                                model.setHoliday(false, for: holiday.workDate)
+                            } label: {
+                                Image(systemName: "trash")
+                            }
+                            .buttonStyle(.borderless)
+                            .help("휴일 지정 해제")
+                        }
+                        .padding(.vertical, 4)
+                        Divider()
+                    }
+                }
+                .frame(maxHeight: 160)
+            }
+        }
     }
 }

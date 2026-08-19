@@ -26,15 +26,25 @@ public struct WeeklyWorkBalanceCalculator: Sendable {
     public func summary(
         records: [WeeklyAttendanceRecord],
         todaySession: WorkSession,
-        fetchedAt: Date
+        fetchedAt: Date,
+        holidays: HolidayCalendar = HolidayCalendar()
     ) -> WeeklyWorkSummary? {
         guard let today = startOfWorkDate(todaySession.workDate) else {
             return nil
         }
 
+        // GW may report the holiday itself, the user may have registered it, or both.
+        let effectiveHolidays = HolidayCalendar(
+            manualEntries: holidays.holidayDates.map { HolidayEntry(workDate: $0, title: holidays.title(for: $0) ?? HolidayEntry.defaultTitle) },
+            records: records
+        )
         let weekStartDate = weekStart(containing: today)
         let grouped = Dictionary(grouping: records, by: \.workDate)
-        let elapsedWeekdays = weekdays(from: weekStartDate, before: today)
+        let allElapsedWeekdays = weekdays(from: weekStartDate, before: today)
+        let holidayWorkDates = allElapsedWeekdays
+            .map(workDate(for:))
+            .filter(effectiveHolidays.isHoliday)
+        let elapsedWeekdays = allElapsedWeekdays.filter { !effectiveHolidays.isHoliday(workDate(for: $0)) }
         var completedDuration: TimeInterval = 0
         var incompleteWorkDates: [String] = []
 
@@ -51,13 +61,24 @@ public struct WeeklyWorkBalanceCalculator: Sendable {
             completedDuration += creditedDuration(forDayRecords: dailyRecords)
         }
 
-        let todayCreditedLeave = grouped[todaySession.workDate, default: []].reduce(0) { total, record in
-            guard record.kind == .creditedLeave else {
-                return total
+        if !effectiveHolidays.isHoliday(todaySession.workDate) {
+            let todayCreditedLeave = grouped[todaySession.workDate, default: []].reduce(0) { total, record in
+                guard record.kind == .creditedLeave else {
+                    return total
+                }
+                return total + max(0, record.creditedDuration)
             }
-            return total + max(0, record.creditedDuration)
+            completedDuration += todayCreditedLeave
         }
-        completedDuration += todayCreditedLeave
+
+        // Holiday work is overtime, not weekly flex: it must never shorten today's target.
+        let overtimeDates = Set(holidayWorkDates).union(
+            effectiveHolidays.isHoliday(todaySession.workDate) ? [todaySession.workDate] : []
+        )
+        let overtimeDuration = overtimeDates.reduce(0) { total, dateText in
+            let dailyRecords = grouped[dateText, default: []].filter { $0.kind == .attendance }
+            return total + creditedDuration(forDayRecords: dailyRecords)
+        }
 
         let targetDuration = Double(elapsedWeekdays.count) * Self.dailyTargetDuration
         let balance = completedDuration - targetDuration
@@ -78,13 +99,16 @@ public struct WeeklyWorkBalanceCalculator: Sendable {
             normalTargetAt: normalTargetAt,
             allFlexUsedTargetAt: allFlexUsedTargetAt,
             fetchedAt: fetchedAt,
-            incompleteWorkDates: incompleteWorkDates
+            incompleteWorkDates: incompleteWorkDates,
+            holidayWorkDates: holidayWorkDates,
+            overtimeDuration: overtimeDuration
         )
     }
 
     public func summary(
         cache: WeeklyAttendanceCache,
-        todaySession: WorkSession
+        todaySession: WorkSession,
+        holidays: HolidayCalendar = HolidayCalendar()
     ) -> WeeklyWorkSummary? {
         guard cache.weekStart == weekStartString(containing: todaySession.workStartAt) else {
             return nil
@@ -92,7 +116,8 @@ public struct WeeklyWorkBalanceCalculator: Sendable {
         return summary(
             records: cache.records,
             todaySession: todaySession,
-            fetchedAt: cache.fetchedAt
+            fetchedAt: cache.fetchedAt,
+            holidays: holidays
         )
     }
 

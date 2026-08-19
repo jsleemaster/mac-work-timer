@@ -21,6 +21,58 @@ final class WeeklyAttendanceParserTests: XCTestCase {
         XCTAssertEqual(records[0].checkOutAt, try date("2026-07-20", "18:44"))
     }
 
+    func testParsesPublicHolidayAsHolidayRatherThanCreditedLeave() throws {
+        let text = """
+        일자\t요일\t출근시각\t출근등록방식\t퇴근시각\t퇴근등록방식\t근태항목\t근태구분
+        2026-08-17\t월\t\t\t\t\t휴일\t공휴일
+        """
+
+        let records = parser.parse(text)
+
+        XCTAssertEqual(records.count, 1)
+        guard let record = records.first else { return }
+        XCTAssertEqual(record.workDate, "2026-08-17")
+        XCTAssertEqual(record.kind, .holiday)
+        XCTAssertEqual(record.creditedDuration, 0)
+    }
+
+    func testParsesSubstituteHolidayAsHoliday() throws {
+        let text = """
+        일자\t요일\t출근시각\t출근등록방식\t퇴근시각\t퇴근등록방식\t근태항목\t근태구분
+        2026-08-17\t월\t\t\t\t\t휴일\t대체공휴일
+        """
+
+        let records = parser.parse(text)
+
+        XCTAssertEqual(records.first?.kind, .holiday)
+    }
+
+    func testParsesAnnualLeaveAsCreditedLeaveNotHoliday() throws {
+        let text = """
+        일자\t요일\t출근시각\t출근등록방식\t퇴근시각\t퇴근등록방식\t근태항목\t근태구분
+        2026-08-18\t화\t\t\t\t\t법정휴가\t연차
+        """
+
+        let records = parser.parse(text)
+
+        XCTAssertEqual(records.first?.kind, .creditedLeave)
+        XCTAssertEqual(records.first?.creditedDuration, 8 * 60 * 60)
+    }
+
+    func testParsesHolidayWorkAsAttendanceRow() throws {
+        let text = """
+        일자\t요일\t출근시각\t출근등록방식\t퇴근시각\t퇴근등록방식\t근태항목\t근태구분
+        2026-08-17\t월\t\t\t\t\t휴일\t공휴일
+        2026-08-17\t월\t09:00\t세콤캡스연동\t18:00\t세콤캡스연동\t출퇴근\t정상
+        """
+
+        let records = parser.parse(text)
+
+        XCTAssertEqual(records.count, 2)
+        XCTAssertEqual(records.first?.kind, .holiday)
+        XCTAssertEqual(records.last?.kind, .attendance)
+    }
+
     func testParsesAttendanceAndAfternoonLeaveAsSeparateRecords() throws {
         let text = """
         일자\t요일\t출근시각\t출근등록방식\t퇴근시각\t퇴근등록방식\t근태항목\t근태구분

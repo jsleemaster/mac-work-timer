@@ -17,7 +17,12 @@ public final class SessionTracker {
     public func startOrResume(now: Date = Date(), preferredStart: Date? = nil) throws -> AppState {
         var state = try store.load()
         let workDate = clock.workDate(for: now)
-        state.todaySession = clock.session(for: preferredStart ?? now, existing: state.todaySession)
+        let holidayDates = state.holidayCalendar.holidayDates
+        state.todaySession = clock.session(
+            for: preferredStart ?? now,
+            existing: state.todaySession,
+            holidayDates: holidayDates
+        )
         if let preferredStart,
            clock.workDate(for: preferredStart) == workDate,
            let session = state.todaySession,
@@ -80,10 +85,13 @@ public final class SessionTracker {
 
     @discardableResult
     public func clearSessionAndGWStatus() throws -> AppState {
+        // Manually registered holidays are user configuration, not GW state, so a logout keeps them.
+        let holidays = (try? store.load().holidays) ?? []
         let state = AppState(
             todaySession: nil,
             gwStatus: .notConfigured,
-            notificationSentForDate: nil
+            notificationSentForDate: nil,
+            holidays: holidays
         )
         try store.save(state)
         return state
@@ -99,6 +107,28 @@ public final class SessionTracker {
         if state.notificationSentForDate == workDate {
             state.notificationSentForDate = nil
         }
+        try store.save(state)
+        return state
+    }
+
+    /// Registers or clears a manual holiday. Marking today a holiday also drops the running
+    /// session and the sent-notification marker, so the app goes as quiet as it does on a weekend.
+    @discardableResult
+    public func setHoliday(_ isHoliday: Bool, for workDate: String, title: String?) throws -> AppState {
+        var state = try store.load()
+        var holidays = state.holidays.filter { $0.workDate != workDate }
+
+        if isHoliday {
+            holidays.append(HolidayEntry(workDate: workDate, title: title ?? HolidayEntry.defaultTitle))
+            if state.todaySession?.workDate == workDate {
+                state.todaySession = nil
+            }
+            if state.notificationSentForDate == workDate {
+                state.notificationSentForDate = nil
+            }
+        }
+
+        state.holidays = holidays.sorted { $0.workDate < $1.workDate }
         try store.save(state)
         return state
     }

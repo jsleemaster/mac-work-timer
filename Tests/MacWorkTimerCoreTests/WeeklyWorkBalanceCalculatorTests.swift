@@ -217,6 +217,161 @@ final class WeeklyWorkBalanceCalculatorTests: XCTestCase {
         XCTAssertEqual(summary.balance, 23 * 60, accuracy: 0.1)
     }
 
+    // MARK: - Holidays
+
+    func testManualHolidayDropsThatDayFromTheWeeklyTarget() throws {
+        let records = try [attendance("2026-07-20", "09:21", "18:44")]
+        let session = WorkSession(
+            workDate: "2026-07-22",
+            workStartAt: try date("2026-07-22", "09:35")
+        )
+
+        let summary = try XCTUnwrap(calculator.summary(
+            records: records,
+            todaySession: session,
+            fetchedAt: try date("2026-07-22", "10:00"),
+            holidays: HolidayCalendar(manualEntries: [HolidayEntry(workDate: "2026-07-21", title: "창립기념일")])
+        ))
+
+        XCTAssertTrue(summary.isComplete)
+        XCTAssertEqual(summary.holidayWorkDates, ["2026-07-21"])
+        XCTAssertEqual(summary.targetDurationThroughYesterday, 8 * 60 * 60, accuracy: 0.1)
+        XCTAssertEqual(summary.balance, 23 * 60, accuracy: 0.1)
+        XCTAssertEqual(summary.overtimeDuration, 0, accuracy: 0.1)
+    }
+
+    func testGWDerivedHolidayRecordDropsThatDayFromTheWeeklyTarget() throws {
+        let records = try [
+            attendance("2026-07-20", "09:21", "18:44"),
+            WeeklyAttendanceRecord(workDate: "2026-07-21", kind: .holiday, sourceText: "2026-07-21 공휴일")
+        ]
+        let session = WorkSession(
+            workDate: "2026-07-22",
+            workStartAt: try date("2026-07-22", "09:35")
+        )
+
+        let summary = try XCTUnwrap(calculator.summary(
+            records: records,
+            todaySession: session,
+            fetchedAt: try date("2026-07-22", "10:00")
+        ))
+
+        XCTAssertTrue(summary.isComplete)
+        XCTAssertEqual(summary.holidayWorkDates, ["2026-07-21"])
+        XCTAssertEqual(summary.targetDurationThroughYesterday, 8 * 60 * 60, accuracy: 0.1)
+        XCTAssertEqual(summary.balance, 23 * 60, accuracy: 0.1)
+    }
+
+    func testHolidayFromBothSourcesIsCountedOnce() throws {
+        let records = try [
+            attendance("2026-07-20", "09:21", "18:44"),
+            WeeklyAttendanceRecord(workDate: "2026-07-21", kind: .holiday, sourceText: "2026-07-21 대체공휴일")
+        ]
+        let session = WorkSession(
+            workDate: "2026-07-22",
+            workStartAt: try date("2026-07-22", "09:35")
+        )
+
+        let summary = try XCTUnwrap(calculator.summary(
+            records: records,
+            todaySession: session,
+            fetchedAt: try date("2026-07-22", "10:00"),
+            holidays: HolidayCalendar(manualEntries: [HolidayEntry(workDate: "2026-07-21", title: "대체공휴일")])
+        ))
+
+        XCTAssertEqual(summary.targetDurationThroughYesterday, 8 * 60 * 60, accuracy: 0.1)
+        XCTAssertEqual(summary.balance, 23 * 60, accuracy: 0.1)
+    }
+
+    func testHolidayWorkBecomesOvertimeInsteadOfWeeklyFlex() throws {
+        let records = try [
+            attendance("2026-07-20", "09:21", "18:44"),
+            attendance("2026-07-21", "09:00", "18:00")
+        ]
+        let session = WorkSession(
+            workDate: "2026-07-22",
+            workStartAt: try date("2026-07-22", "09:35")
+        )
+
+        let summary = try XCTUnwrap(calculator.summary(
+            records: records,
+            todaySession: session,
+            fetchedAt: try date("2026-07-22", "10:00"),
+            holidays: HolidayCalendar(manualEntries: [HolidayEntry(workDate: "2026-07-21", title: "창립기념일")])
+        ))
+
+        XCTAssertTrue(summary.isComplete)
+        XCTAssertEqual(summary.balance, 23 * 60, accuracy: 0.1)
+        XCTAssertEqual(summary.overtimeDuration, 8 * 60 * 60, accuracy: 0.1)
+        XCTAssertEqual(summary.allFlexUsedTargetAt, try date("2026-07-22", "18:12"))
+    }
+
+    func testHolidayLeaveCreditIsNotDoubleCounted() throws {
+        let records = try [
+            attendance("2026-07-20", "09:21", "18:44"),
+            WeeklyAttendanceRecord(
+                workDate: "2026-07-21",
+                kind: .creditedLeave,
+                creditedDuration: 8 * 60 * 60,
+                sourceText: "2026-07-21 연차"
+            )
+        ]
+        let session = WorkSession(
+            workDate: "2026-07-22",
+            workStartAt: try date("2026-07-22", "09:35")
+        )
+
+        let summary = try XCTUnwrap(calculator.summary(
+            records: records,
+            todaySession: session,
+            fetchedAt: try date("2026-07-22", "10:00"),
+            holidays: HolidayCalendar(manualEntries: [HolidayEntry(workDate: "2026-07-21", title: "창립기념일")])
+        ))
+
+        XCTAssertEqual(summary.balance, 23 * 60, accuracy: 0.1)
+        XCTAssertEqual(summary.overtimeDuration, 0, accuracy: 0.1)
+    }
+
+    func testMissingHolidayRecordNoLongerMakesTheSummaryIncomplete() throws {
+        let session = WorkSession(
+            workDate: "2026-07-22",
+            workStartAt: try date("2026-07-22", "09:35")
+        )
+        let records = try [attendance("2026-07-20", "09:21", "18:44")]
+
+        let summary = try XCTUnwrap(calculator.summary(
+            records: records,
+            todaySession: session,
+            fetchedAt: try date("2026-07-22", "10:00"),
+            holidays: HolidayCalendar(manualEntries: [HolidayEntry(workDate: "2026-07-21", title: "창립기념일")])
+        ))
+
+        XCTAssertTrue(summary.isComplete)
+        XCTAssertEqual(summary.incompleteWorkDates, [])
+    }
+
+    func testHolidayTodayCreditsOvertimeWithoutChangingTheWeeklyTarget() throws {
+        let records = try [
+            attendance("2026-07-20", "09:21", "18:44"),
+            attendance("2026-07-21", "09:00", "18:00")
+        ]
+        let session = WorkSession(
+            workDate: "2026-07-21",
+            workStartAt: try date("2026-07-21", "09:00")
+        )
+
+        let summary = try XCTUnwrap(calculator.summary(
+            records: records,
+            todaySession: session,
+            fetchedAt: try date("2026-07-21", "18:10"),
+            holidays: HolidayCalendar(manualEntries: [HolidayEntry(workDate: "2026-07-21", title: "창립기념일")])
+        ))
+
+        XCTAssertEqual(summary.targetDurationThroughYesterday, 8 * 60 * 60, accuracy: 0.1)
+        XCTAssertEqual(summary.balance, 23 * 60, accuracy: 0.1)
+        XCTAssertEqual(summary.overtimeDuration, 8 * 60 * 60, accuracy: 0.1)
+    }
+
     private func attendance(_ workDate: String, _ checkIn: String, _ checkOut: String) throws -> WeeklyAttendanceRecord {
         WeeklyAttendanceRecord(
             workDate: workDate,

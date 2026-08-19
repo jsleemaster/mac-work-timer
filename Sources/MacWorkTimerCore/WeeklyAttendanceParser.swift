@@ -56,7 +56,17 @@ public struct WeeklyAttendanceParser: Sendable {
             )
         }
 
-        if row.contains("연차") || row.contains("휴가") || row.contains("공휴일") {
+        // A company-wide holiday drops the day from the weekly target, so it must be
+        // recognised before the personal-leave branch that credits 8 hours toward it.
+        if row.contains("공휴일") || row.contains("회사휴무") {
+            return WeeklyAttendanceRecord(
+                workDate: workDate,
+                kind: .holiday,
+                sourceText: row
+            )
+        }
+
+        if row.contains("연차") || row.contains("휴가") {
             return WeeklyAttendanceRecord(
                 workDate: workDate,
                 kind: .creditedLeave,

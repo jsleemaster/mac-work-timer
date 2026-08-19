@@ -30,6 +30,29 @@ public enum WeeklyWorkCopyFormatter {
         return WeeklyBalanceCopy(label: "이번 주 부족", value: value)
     }
 
+    /// Holiday work is reported on its own line so it never reads as flex time to spend.
+    public static func overtimeCopy(_ overtime: TimeInterval) -> WeeklyBalanceCopy? {
+        let totalMinutes = Int(max(0, overtime) / 60)
+        guard totalMinutes > 0 else {
+            return nil
+        }
+        return WeeklyBalanceCopy(label: "이번 주 초과근무", value: "+\(durationText(totalMinutes: totalMinutes))")
+    }
+
+    public static func overtimeLine(_ overtime: TimeInterval) -> String? {
+        guard let copy = overtimeCopy(overtime) else {
+            return nil
+        }
+        return "\(copy.label) \(copy.value)"
+    }
+
+    public static func holidayLine(_ holidayWorkDates: [String]) -> String? {
+        guard !holidayWorkDates.isEmpty else {
+            return nil
+        }
+        return "휴일 \(holidayWorkDates.count)일 제외"
+    }
+
     private static func durationText(totalMinutes: Int) -> String {
         let hours = totalMinutes / 60
         let minutes = totalMinutes % 60
