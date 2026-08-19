@@ -79,7 +79,11 @@ final class AppModel: NSObject, ObservableObject {
               let cache = state.weeklyAttendanceCache else {
             return nil
         }
-        return weeklyCalculator.summary(cache: cache, todaySession: currentSession)
+        return weeklyCalculator.summary(
+            cache: cache,
+            todaySession: currentSession,
+            holidays: state.holidayCalendar
+        )
     }
 
     var effectiveTargetAt: Date? {
@@ -342,6 +346,52 @@ final class AppModel: NSObject, ObservableObject {
         } catch {
             statusMessage = error.localizedDescription
         }
+    }
+
+    // MARK: - Holidays
+
+    var holidayCalendar: HolidayCalendar {
+        state.holidayCalendar
+    }
+
+    var holidays: [HolidayEntry] {
+        state.holidays
+    }
+
+    var todayWorkDate: String {
+        clock.workDate(for: now)
+    }
+
+    func workDateText(for date: Date) -> String {
+        clock.workDate(for: date)
+    }
+
+    var isTodayHoliday: Bool {
+        holidayCalendar.isHoliday(todayWorkDate)
+    }
+
+    /// GW-reported holidays cannot be toggled off locally; only manual entries can.
+    var isTodayManualHoliday: Bool {
+        holidayCalendar.isManualHoliday(todayWorkDate)
+    }
+
+    func setHoliday(_ isHoliday: Bool, for workDate: String, title: String? = nil) {
+        do {
+            state = try tracker.setHoliday(isHoliday, for: workDate, title: title)
+            if isHoliday {
+                statusMessage = "\(workDate)을 휴일로 처리합니다."
+            } else {
+                statusMessage = "\(workDate) 휴일 지정을 해제했습니다."
+                startOrResumeLocalSession()
+            }
+            updateNotificationIfNeeded(force: true)
+        } catch {
+            statusMessage = error.localizedDescription
+        }
+    }
+
+    func toggleTodayHoliday() {
+        setHoliday(!isTodayManualHoliday, for: todayWorkDate)
     }
 
     private func startClock() {

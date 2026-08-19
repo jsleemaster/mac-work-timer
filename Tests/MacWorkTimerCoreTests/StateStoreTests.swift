@@ -46,6 +46,38 @@ final class StateStoreTests: XCTestCase {
         XCTAssertNil(loaded.weeklyAttendanceCache)
     }
 
+    func testHolidayEntriesRoundTrip() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let store = StateStore(directory: directory)
+        let holidays = [
+            HolidayEntry(workDate: "2026-08-17", title: "광복절 대체"),
+            HolidayEntry(workDate: "2026-09-01", title: "창립기념일")
+        ]
+        var state = AppState.empty
+        state.holidays = holidays
+
+        try store.save(state)
+
+        XCTAssertEqual(try store.load().holidays, holidays)
+    }
+
+    func testOldStateWithoutHolidaysStillDecodes() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let json = """
+        {
+          "gwStatus" : { "notConfigured" : {} },
+          "notificationSentForDate" : "2026-07-20",
+          "petReveal" : null,
+          "todaySession" : null,
+          "workdayModeSelection" : null
+        }
+        """
+        try Data(json.utf8).write(to: directory.appendingPathComponent("state.json"))
+
+        XCTAssertEqual(try StateStore(directory: directory).load().holidays, [])
+    }
+
     func testStateRoundTripPersistsSessionAndGWStatus() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         let store = StateStore(directory: directory)

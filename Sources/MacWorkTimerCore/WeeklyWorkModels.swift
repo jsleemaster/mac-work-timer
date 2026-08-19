@@ -5,6 +5,9 @@ public struct WeeklyAttendanceRecord: Codable, Equatable, Sendable {
         case attendance
         case creditedLeave
         case explicitAbsence
+        /// A company-wide non-working day. Unlike `creditedLeave` it carries no credit,
+        /// because the day is removed from the weekly target instead of being paid into it.
+        case holiday
     }
 
     public let workDate: String
@@ -52,6 +55,11 @@ public struct WeeklyWorkSummary: Equatable, Sendable {
     public let allFlexUsedTargetAt: Date
     public let fetchedAt: Date
     public let incompleteWorkDates: [String]
+    /// Weekdays removed from the weekly target because they are holidays.
+    public let holidayWorkDates: [String]
+    /// Time worked on holidays. Deliberately kept out of `completedDuration` and `balance`
+    /// so it is reported as overtime instead of shortening today's target.
+    public let overtimeDuration: TimeInterval
 
     public init(
         weekStart: String,
@@ -61,7 +69,9 @@ public struct WeeklyWorkSummary: Equatable, Sendable {
         normalTargetAt: Date,
         allFlexUsedTargetAt: Date,
         fetchedAt: Date,
-        incompleteWorkDates: [String]
+        incompleteWorkDates: [String],
+        holidayWorkDates: [String] = [],
+        overtimeDuration: TimeInterval = 0
     ) {
         self.weekStart = weekStart
         self.completedDuration = completedDuration
@@ -71,6 +81,8 @@ public struct WeeklyWorkSummary: Equatable, Sendable {
         self.allFlexUsedTargetAt = allFlexUsedTargetAt
         self.fetchedAt = fetchedAt
         self.incompleteWorkDates = incompleteWorkDates
+        self.holidayWorkDates = holidayWorkDates
+        self.overtimeDuration = overtimeDuration
     }
 
     public var isComplete: Bool {

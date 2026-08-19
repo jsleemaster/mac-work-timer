@@ -35,4 +35,27 @@ final class WeeklyWorkCopyFormatterTests: XCTestCase {
         XCTAssertEqual(copy.label, "이번 주 부족")
         XCTAssertEqual(copy.value, "14분")
     }
+
+    func testOvertimeCopyKeepsHolidayWorkSeparateFromFlex() {
+        let copy = WeeklyWorkCopyFormatter.overtimeCopy(8 * 60 * 60)
+
+        XCTAssertEqual(copy?.label, "이번 주 초과근무")
+        XCTAssertEqual(copy?.value, "+8시간")
+    }
+
+    func testOvertimeCopyIsHiddenWhenThereIsNoHolidayWork() {
+        XCTAssertNil(WeeklyWorkCopyFormatter.overtimeCopy(0))
+        XCTAssertNil(WeeklyWorkCopyFormatter.overtimeCopy(30))
+    }
+
+    func testOvertimeLineMatchesTheSplitCopy() {
+        XCTAssertEqual(WeeklyWorkCopyFormatter.overtimeLine(90 * 60), "이번 주 초과근무 +1시간 30분")
+        XCTAssertNil(WeeklyWorkCopyFormatter.overtimeLine(0))
+    }
+
+    func testHolidayCountLineSummarizesExcludedDays() {
+        XCTAssertNil(WeeklyWorkCopyFormatter.holidayLine([]))
+        XCTAssertEqual(WeeklyWorkCopyFormatter.holidayLine(["2026-08-17"]), "휴일 1일 제외")
+        XCTAssertEqual(WeeklyWorkCopyFormatter.holidayLine(["2026-08-17", "2026-08-18"]), "휴일 2일 제외")
+    }
 }
