@@ -81,6 +81,28 @@ Personal leave is deliberately not a holiday. `연차`, `휴가`, and half-day r
 
 Work recorded on a holiday is **overtime, not flex**. It is reported separately as `이번 주 초과근무` and never folded into `이번 주 여유`, so it cannot pull `오늘 다 쓰면` earlier and be silently spent.
 
+## Lunch break
+
+An 8-hour day owes 8 hours of **work**; the unpaid 12:00–13:00 break is not part of it. Every
+duration in the app is one of those two things, never a mix:
+
+- `WorkdayMode.workDuration` — work the day owes: 8h for a full day, 4h for a half day.
+- `WeeklyWorkBalanceCalculator.dailyTargetDuration` — 8h, the same unit, so the weekly 40-hour
+  target and the daily target agree.
+- `WorkSession.workdayDuration` — the wall-clock span, derived from the target rather than fixed.
+
+`LunchBreak` is the single place that converts between them, and it charges the break only when
+the shift actually runs through it. That matters at both ends of the day: a shift that finishes
+before noon never reaches lunch, and one that starts after 13:00 has already missed it. Adding a
+flat hour in either case put the target an hour late — asking for an hour of work the week did not
+owe. So `LunchBreak.endOfWork` solves the end time from the work owed, which makes it the exact
+inverse of `LunchBreak.creditedDuration`.
+
+Concretely, with a full day starting at 09:00 the target is still 18:00. With 2 hours of work left
+after a 6-hour weekly surplus it is 11:00, not 12:00. Starting at 13:00 it is 21:00, not 22:00. A
+day that clocks in and out several times still gives up the break at most once. Holidays use the
+same rule, so holiday work is credited as overtime with its lunch removed too.
+
 ## AI limit indicator
 
 The floating pet and menu dropdown show Codex and Claude only when a local 5-hour or weekly AI limit is exhausted. Normal non-limited usage is hidden to keep the timer quiet.
