@@ -4,6 +4,7 @@ public struct WeeklyWorkBalanceCalculator: Sendable {
     public static let dailyTargetDuration: TimeInterval = 8 * 60 * 60
 
     private let calendar: Calendar
+    private let lunch: LunchBreak
 
     public init(timeZone: TimeZone = TimeZone(identifier: "Asia/Seoul")!) {
         var calendar = Calendar(identifier: .gregorian)
@@ -11,6 +12,7 @@ public struct WeeklyWorkBalanceCalculator: Sendable {
         calendar.firstWeekday = 2
         calendar.minimumDaysInFirstWeek = 4
         self.calendar = calendar
+        self.lunch = LunchBreak(timeZone: timeZone)
     }
 
     public func weekStartString(containing date: Date) -> String {
@@ -85,8 +87,14 @@ public struct WeeklyWorkBalanceCalculator: Sendable {
         let normalTargetAt = todaySession.targetAt
         let allFlexUsedTargetAt: Date
         if incompleteWorkDates.isEmpty {
-            let adjusted = normalTargetAt.addingTimeInterval(-balance)
-            allFlexUsedTargetAt = max(adjusted, todaySession.workStartAt)
+            // Spend the surplus as work, not as wall-clock. Subtracting the balance from the
+            // target directly would keep charging the lunch hour to a day that now finishes
+            // before lunch even starts, making the readout up to an hour too late.
+            let workLeftToday = max(0, todaySession.workdayMode.workDuration - balance)
+            allFlexUsedTargetAt = max(
+                lunch.endOfWork(startingAt: todaySession.workStartAt, creditedWork: workLeftToday),
+                todaySession.workStartAt
+            )
         } else {
             allFlexUsedTargetAt = normalTargetAt
         }
@@ -135,22 +143,12 @@ public struct WeeklyWorkBalanceCalculator: Sendable {
             return DateInterval(start: checkInAt, end: checkOutAt)
         }
         let grossDuration = completedIntervals.reduce(0) { $0 + $1.duration }
+        // A day gives up the break once, however many times it clocked in and out around it.
         let lunchOverlap = min(
-            60 * 60,
-            completedIntervals.reduce(0) { $0 + self.lunchOverlap(for: $1) }
+            lunch.duration,
+            completedIntervals.reduce(0) { $0 + lunch.overlap(with: $1) }
         )
         return creditedLeave + max(0, grossDuration - lunchOverlap)
-    }
-
-    private func lunchOverlap(for interval: DateInterval) -> TimeInterval {
-        let day = calendar.startOfDay(for: interval.start)
-        guard let lunchStart = calendar.date(byAdding: .hour, value: 12, to: day),
-              let lunchEnd = calendar.date(byAdding: .hour, value: 13, to: day) else {
-            return 0
-        }
-        let start = max(interval.start, lunchStart)
-        let end = min(interval.end, lunchEnd)
-        return max(0, end.timeIntervalSince(start))
     }
 
     private func isIncompleteAttendance(_ record: WeeklyAttendanceRecord) -> Bool {
