@@ -101,7 +101,10 @@ struct WorkPetView: View {
 
     private var labelTextColor: Color {
         if case .capsuleIdle = revealDisplay {
-            return Color(red: 0.18, green: 0.20, blue: 0.22).opacity(0.78)
+            return .adaptive(
+                light: Color(red: 0.18, green: 0.20, blue: 0.22).opacity(0.78),
+                dark: .white.opacity(0.82)
+            )
         }
 
         return visualState.textColor
@@ -503,9 +506,15 @@ private struct AgentUsageCardBadge: View {
     private var accent: Color {
         switch card.provider {
         case .codex:
-            return Color(red: 0.18, green: 0.43, blue: 0.86)
+            return .adaptive(
+                light: Color(red: 0.18, green: 0.43, blue: 0.86),
+                dark: Color(red: 0.47, green: 0.68, blue: 1.00)
+            )
         case .claude:
-            return Color(red: 0.80, green: 0.37, blue: 0.16)
+            return .adaptive(
+                light: Color(red: 0.80, green: 0.37, blue: 0.16),
+                dark: Color(red: 1.00, green: 0.60, blue: 0.38)
+            )
         }
     }
 
@@ -526,7 +535,7 @@ private struct AgentUsageCardBadge: View {
                 if !card.isResetDominant, let secondaryText = card.secondaryText {
                     Text(secondaryText)
                         .font(.system(size: CGFloat(PetPanelMetrics.agentUsageSecondaryFontSize), weight: .heavy, design: .rounded))
-                        .foregroundStyle(Color.black.opacity(0.66))
+                        .foregroundStyle(Color.adaptive(light: .black.opacity(0.66), dark: .white.opacity(0.70)))
                         .lineLimit(1)
                         .minimumScaleFactor(0.78)
                 }
@@ -541,7 +550,7 @@ private struct AgentUsageCardBadge: View {
             } else {
                 Text(card.primaryText)
                     .font(.system(size: CGFloat(PetPanelMetrics.agentUsagePrimaryFontSize), weight: .heavy, design: .rounded))
-                    .foregroundStyle(Color.black.opacity(0.78))
+                    .foregroundStyle(Color.adaptive(light: .black.opacity(0.78), dark: .white.opacity(0.90)))
                     .lineLimit(1)
                     .minimumScaleFactor(0.78)
             }
@@ -549,7 +558,7 @@ private struct AgentUsageCardBadge: View {
             if card.isResetDominant, let secondaryText = card.secondaryText {
                 Text(secondaryText)
                     .font(.system(size: CGFloat(PetPanelMetrics.agentUsageSecondaryFontSize), weight: .heavy, design: .rounded))
-                    .foregroundStyle(Color.black.opacity(0.56))
+                    .foregroundStyle(Color.adaptive(light: .black.opacity(0.56), dark: .white.opacity(0.62)))
             }
 
             AgentUsageMeter(percent: card.remainingPercent, accent: accent)
@@ -792,15 +801,33 @@ private struct HalfClip: Shape {
     }
 }
 
+private extension Color {
+    /// Picks a color per light/dark appearance, since the glass behind the
+    /// pet labels darkens in dark mode while fixed colors do not.
+    static func adaptive(light: Color, dark: Color) -> Color {
+        Color(nsColor: NSColor(name: nil) { appearance in
+            appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+                ? NSColor(dark)
+                : NSColor(light)
+        })
+    }
+}
+
 private extension PetVisualState {
     var textColor: Color {
         switch labelTone {
         case .neutral:
-            return .black.opacity(0.72)
+            return .adaptive(light: .black.opacity(0.72), dark: .white.opacity(0.88))
         case .warm:
-            return Color(red: 0.82, green: 0.34, blue: 0.12).opacity(0.86)
+            return .adaptive(
+                light: Color(red: 0.82, green: 0.34, blue: 0.12).opacity(0.86),
+                dark: Color(red: 1.00, green: 0.64, blue: 0.40)
+            )
         case .done:
-            return Color(red: 0.10, green: 0.52, blue: 0.29).opacity(0.86)
+            return .adaptive(
+                light: Color(red: 0.10, green: 0.52, blue: 0.29).opacity(0.86),
+                dark: Color(red: 0.48, green: 0.88, blue: 0.60)
+            )
         }
     }
 
