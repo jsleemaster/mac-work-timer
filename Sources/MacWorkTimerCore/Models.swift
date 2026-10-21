@@ -5,12 +5,15 @@ public enum WorkdayMode: String, Codable, CaseIterable, Equatable, Hashable, Sen
     case morningHalfDay
     case afternoonHalfDay
 
-    public var duration: TimeInterval {
+    /// Work the day owes, lunch excluded. The wall-clock span is longer whenever the shift
+    /// actually runs through the lunch window, which `LunchBreak` decides per session rather
+    /// than assuming.
+    public var workDuration: TimeInterval {
         switch self {
         case .fullDay:
-            return 9 * 60 * 60
+            return 8 * 60 * 60
         case .morningHalfDay, .afternoonHalfDay:
-            return 5 * 60 * 60
+            return 4 * 60 * 60
         }
     }
 
@@ -37,7 +40,8 @@ public struct WorkdayModeSelection: Codable, Equatable, Sendable {
 }
 
 public struct WorkSession: Codable, Equatable, Sendable {
-    public static let workdayDuration: TimeInterval = WorkdayMode.fullDay.duration
+    /// Fallback span for readouts with no session yet: a full day plus the lunch it spans.
+    public static let workdayDuration: TimeInterval = WorkdayMode.fullDay.workDuration + LunchBreak.standard.duration
 
     public let workDate: String
     public let workStartAt: Date
@@ -62,12 +66,14 @@ public struct WorkSession: Codable, Equatable, Sendable {
         self.workdayMode = try container.decodeIfPresent(WorkdayMode.self, forKey: .workdayMode) ?? .fullDay
     }
 
-    public var workdayDuration: TimeInterval {
-        workdayMode.duration
+    public var targetAt: Date {
+        LunchBreak.standard.endOfWork(startingAt: workStartAt, creditedWork: workdayMode.workDuration)
     }
 
-    public var targetAt: Date {
-        workStartAt.addingTimeInterval(workdayDuration)
+    /// Wall-clock length of the day, derived from the target rather than assumed, so progress
+    /// readouts and the pet stay in step with the time the timer is actually counting down to.
+    public var workdayDuration: TimeInterval {
+        targetAt.timeIntervalSince(workStartAt)
     }
 
     public var isWeekend: Bool {

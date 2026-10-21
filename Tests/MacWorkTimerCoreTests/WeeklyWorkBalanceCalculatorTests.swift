@@ -85,6 +85,72 @@ final class WeeklyWorkBalanceCalculatorTests: XCTestCase {
         XCTAssertEqual(summary.allFlexUsedTargetAt, try date("2026-07-29", "16:30"))
     }
 
+    /// A surplus large enough to end the day before noon must not keep charging the lunch hour:
+    /// the target used to land an hour late, quietly asking for an extra hour of work.
+    func testLargeSurplusTargetsTheHourItActuallyOwes() throws {
+        let records = try [
+            attendance("2026-07-20", "09:00", "18:00"),
+            attendance("2026-07-21", "09:00", "18:00")
+        ]
+        // Monday 8h + Tuesday 8h against a 16h target is level; credit 6 extra hours of leave.
+        let withSurplus = records + [
+            WeeklyAttendanceRecord(
+                workDate: "2026-07-20",
+                kind: .creditedLeave,
+                creditedDuration: 6 * 60 * 60,
+                sourceText: "fixture"
+            )
+        ]
+        let session = WorkSession(workDate: "2026-07-22", workStartAt: try date("2026-07-22", "09:00"))
+
+        let summary = try XCTUnwrap(calculator.summary(
+            records: withSurplus,
+            todaySession: session,
+            fetchedAt: try date("2026-07-22", "10:00")
+        ))
+
+        XCTAssertEqual(summary.balance, 6 * 60 * 60, accuracy: 0.1)
+        // 2h of work left, all of it before noon, so no lunch is deducted: 09:00 + 2h.
+        XCTAssertEqual(summary.allFlexUsedTargetAt, try date("2026-07-22", "11:00"))
+        XCTAssertEqual(
+            LunchBreak.standard.creditedDuration(from: session.workStartAt, to: summary.allFlexUsedTargetAt),
+            2 * 60 * 60,
+            accuracy: 0.1
+        )
+    }
+
+    /// The target must always credit exactly the work the week still owes today, whatever the
+    /// balance and whenever the day started. This is the property both lunch bugs broke.
+    func testFlexTargetAlwaysCreditsTheWorkStillOwed() throws {
+        for startHour in [9, 11, 13, 14] {
+            for leaveHours in [0, 2, 4, 6, 7] {
+                let records = [
+                    WeeklyAttendanceRecord(
+                        workDate: "2026-07-20",
+                        kind: .creditedLeave,
+                        creditedDuration: TimeInterval((8 + leaveHours) * 60 * 60),
+                        sourceText: "fixture"
+                    )
+                ]
+                let start = try date("2026-07-21", String(format: "%02d:00", startHour))
+                let session = WorkSession(workDate: "2026-07-21", workStartAt: start)
+                let summary = try XCTUnwrap(calculator.summary(
+                    records: records,
+                    todaySession: session,
+                    fetchedAt: start
+                ))
+                let owed = max(0, WorkdayMode.fullDay.workDuration - summary.balance)
+
+                XCTAssertEqual(
+                    LunchBreak.standard.creditedDuration(from: start, to: summary.allFlexUsedTargetAt),
+                    owed,
+                    accuracy: 0.1,
+                    "start \(startHour):00 with \(leaveHours)h surplus"
+                )
+            }
+        }
+    }
+
     func testLunchDeductionUsesOnlyActualOverlap() throws {
         let partialLunch = try attendance("2026-07-20", "12:30", "18:00")
         let noLunch = try attendance("2026-07-21", "13:00", "18:00")
