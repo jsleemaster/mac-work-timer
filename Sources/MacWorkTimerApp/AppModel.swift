@@ -22,6 +22,7 @@ final class AppModel: NSObject, ObservableObject {
     private let webSessionProbe = GWWebSessionProbe()
     private let weeklyWebSessionProbe = GWWeeklyWebSessionProbe()
     private let weeklyCalculator: WeeklyWorkBalanceCalculator
+    private let holidayMenuBuilder = HolidayMenuOptionsBuilder()
     private let notificationService: NotificationService
     private let loginItemsController: LoginItemsController
     private let agentUsageReader: AgentUsageFileReader
@@ -370,9 +371,14 @@ final class AppModel: NSObject, ObservableObject {
         holidayCalendar.isHoliday(todayWorkDate)
     }
 
-    /// GW-reported holidays cannot be toggled off locally; only manual entries can.
-    var isTodayManualHoliday: Bool {
-        holidayCalendar.isManualHoliday(todayWorkDate)
+    /// The current week's weekdays, so a holiday can be registered for a day that has already
+    /// passed. Anything outside this week is registered from the settings window.
+    var holidayMenuOptions: [HolidayMenuOption] {
+        holidayMenuBuilder.currentWeekOptions(today: todayWorkDate, holidays: holidayCalendar)
+    }
+
+    func isManualHoliday(_ workDate: String) -> Bool {
+        holidayCalendar.isManualHoliday(workDate)
     }
 
     func setHoliday(_ isHoliday: Bool, for workDate: String, title: String? = nil) {
@@ -382,7 +388,11 @@ final class AppModel: NSObject, ObservableObject {
                 statusMessage = "\(workDate)을 휴일로 처리합니다."
             } else {
                 statusMessage = "\(workDate) 휴일 지정을 해제했습니다."
-                startOrResumeLocalSession()
+                // Only today's session can be resumed; clearing a past holiday must not
+                // start a session for a day that is already over.
+                if workDate == todayWorkDate {
+                    startOrResumeLocalSession()
+                }
             }
             updateNotificationIfNeeded(force: true)
         } catch {
@@ -390,8 +400,13 @@ final class AppModel: NSObject, ObservableObject {
         }
     }
 
-    func toggleTodayHoliday() {
-        setHoliday(!isTodayManualHoliday, for: todayWorkDate)
+    /// Flips a manual holiday for any date, past or present. GW-reported holidays are not
+    /// toggleable — the next attendance refresh would restore them anyway.
+    func toggleHoliday(for workDate: String) {
+        guard !holidayCalendar.isHoliday(workDate) || isManualHoliday(workDate) else {
+            return
+        }
+        setHoliday(!isManualHoliday(workDate), for: workDate)
     }
 
     private func startClock() {

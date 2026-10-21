@@ -75,7 +75,14 @@ A five-day week is not always five working days. Public holidays, substitute hol
 Holidays come from two sources, merged:
 
 - **GW**: rows whose 근태구분 contains `공휴일` (including `대체공휴일`) or `회사휴무` are read from the weekly attendance table. These appear automatically after a weekly refresh and cannot be unset locally.
-- **Manual**: registered in the app for anything GW does not report, such as a company foundation day. Toggle the current day from the menu bar (`오늘 휴일로 표시`), or manage the full list in Settings with a date picker and an optional label. Manual holidays are stored in `state.json` and survive a GW logout.
+- **Manual**: registered in the app for anything GW does not report, such as a company foundation day. Manual holidays are stored in `state.json` and survive a GW logout.
+
+Manual holidays can be registered for a **past date**, not just for today — a holiday is usually noticed after the fact, and the weekly balance is recomputed from the stored holiday list on every read, so a day added afterwards is applied retroactively.
+
+Two ways to register one:
+
+- **Menu bar → `휴일로 표시`**: lists the current week's Monday through Friday with today marked, so any elapsed day of the week can be checked or unchecked in place. This week is the useful span because it is exactly what the 40-hour weekly balance is computed over. GW-reported holidays appear checked but disabled, since the next weekly refresh would restore them.
+- **Menu bar → `설정…`** (also reachable as `다른 날짜…` inside the submenu): a date picker with an optional label, for any date outside the current week. The app runs with `.accessory` activation policy and has no application menu, so this menu item is the only way in — the SwiftUI `Settings` scene's ⌘, binding is unreachable.
 
 Personal leave is deliberately not a holiday. `연차`, `휴가`, and half-day rows stay credited leave: the day keeps its 8-hour slot in the weekly target and the leave pays into it. A holiday instead removes the slot, which is what keeps a missing holiday row from marking the week incomplete and disabling the flex-time readout.
 
