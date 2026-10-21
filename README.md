@@ -66,7 +66,13 @@ Local-only personal pet images can also be stored outside the repository at `~/M
 - `stage-3.png`
 - `sources.json`
 
-When all three PNG files exist, the app treats them as one local-only evolving pet and keeps those files out of GitHub and public release builds.
+When all three PNG files exist, the app treats them as one local-only evolving pet and keeps those files out of GitHub and public release builds. The stage images advance with elapsed work time: the workday is split evenly by stage count, so a three-stage pet shows `stage-1.png` for the first third, `stage-2.png` for the second, and `stage-3.png` from the final third until check-out.
+
+Additional local pets can live in subdirectories, each with its own `stage-<n>.png` sequence:
+
+- `~/MacWorkTimerLocalPets/sprout/stage-1.png` ... `stage-3.png`
+
+Installing local pets is treated as an explicit opt-in, so while any exist the daily capsule reveals only those pets and the bundled sample pets stay out of the rotation. Remove the directory to return to the bundled pets. Local stage images are drawn as-is, without the synthetic eyelids used by the built-in vector pets.
 
 ## Holidays
 
