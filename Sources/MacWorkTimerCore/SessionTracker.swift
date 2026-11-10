@@ -55,7 +55,19 @@ public final class SessionTracker {
             return false
         }
 
+        if weeklyCheckIn(for: workDate, in: state.weeklyAttendanceCache) != nil {
+            return false
+        }
+
         return true
+    }
+
+    private func weeklyCheckIn(for workDate: String, in cache: WeeklyAttendanceCache?) -> (record: WeeklyAttendanceRecord, checkInAt: Date)? {
+        guard let record = cache?.records.first(where: { $0.workDate == workDate && $0.kind == .attendance && $0.checkInAt != nil }),
+              let checkInAt = record.checkInAt else {
+            return nil
+        }
+        return (record, checkInAt)
     }
 
     @discardableResult
@@ -79,8 +91,31 @@ public final class SessionTracker {
     public func updateWeeklyAttendanceCache(_ cache: WeeklyAttendanceCache) throws -> AppState {
         var state = try store.load()
         state.weeklyAttendanceCache = cache
+        applyWeeklyCheckIn(from: cache, to: &state)
         try store.save(state)
         return state
+    }
+
+    /// The today-status lookup is often blocked by second-factor login while the weekly list
+    /// still loads, which would leave today's timer on the local activity guess. When the weekly
+    /// list carries today's GW check-in, it replaces that guess — but never a today-status record.
+    private func applyWeeklyCheckIn(from cache: WeeklyAttendanceCache, to state: inout AppState) {
+        guard let session = state.todaySession else {
+            return
+        }
+        if case .attendance(let record) = state.gwStatus, record.workDate == session.workDate {
+            return
+        }
+        guard let (weekly, checkInAt) = weeklyCheckIn(for: session.workDate, in: cache) else {
+            return
+        }
+
+        let record = AttendanceRecord(workDate: session.workDate, checkInAt: checkInAt, sourceText: weekly.sourceText)
+        state.todaySession = WorkSession(workDate: session.workDate, workStartAt: checkInAt, workdayMode: session.workdayMode)
+        state.gwStatus = .attendance(record)
+        if checkInAt != session.workStartAt, state.notificationSentForDate == session.workDate {
+            state.notificationSentForDate = nil
+        }
     }
 
     @discardableResult

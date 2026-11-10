@@ -24,6 +24,94 @@ final class SessionTrackerTests: XCTestCase {
         XCTAssertEqual(try store.load().weeklyAttendanceCache, cache)
     }
 
+    func testWeeklyCheckInReplacesLocalFallbackStartForToday() throws {
+        let clock = WorkdayClock(timeZone: TimeZone(identifier: "Asia/Seoul")!)
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let store = StateStore(directory: directory)
+        let tracker = SessionTracker(clock: clock, store: store)
+        let localStart = try XCTUnwrap(DateComponents(calendar: clock.calendar, timeZone: clock.calendar.timeZone, year: 2026, month: 11, day: 11, hour: 5, minute: 21, second: 19).date)
+        let gwCheckIn = try XCTUnwrap(DateComponents(calendar: clock.calendar, timeZone: clock.calendar.timeZone, year: 2026, month: 11, day: 11, hour: 6, minute: 39).date)
+        try store.save(AppState(
+            todaySession: WorkSession(workDate: "2026-11-11", workStartAt: localStart, workdayMode: .afternoonHalfDay),
+            gwStatus: .requiresWebLogin("GW 웹 로그인이 필요합니다."),
+            notificationSentForDate: "2026-11-11"
+        ))
+        let sourceText = "2026-11-11\t수\t06:39\t세콤캡스연동\t\t\t출퇴근\t출근\t승인\t마감전"
+        let cache = WeeklyAttendanceCache(
+            weekStart: "2026-11-09",
+            fetchedAt: gwCheckIn,
+            records: [WeeklyAttendanceRecord(workDate: "2026-11-11", kind: .attendance, checkInAt: gwCheckIn, sourceText: sourceText)]
+        )
+
+        let updated = try tracker.updateWeeklyAttendanceCache(cache)
+
+        XCTAssertEqual(updated.todaySession, WorkSession(workDate: "2026-11-11", workStartAt: gwCheckIn, workdayMode: .afternoonHalfDay))
+        XCTAssertEqual(updated.gwStatus, .attendance(AttendanceRecord(workDate: "2026-11-11", checkInAt: gwCheckIn, sourceText: sourceText)))
+        XCTAssertNil(updated.notificationSentForDate)
+        XCTAssertEqual(try store.load(), updated)
+    }
+
+    func testWeeklyCheckInDoesNotOverrideTodaysAttendanceRecord() throws {
+        let clock = WorkdayClock(timeZone: TimeZone(identifier: "Asia/Seoul")!)
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let store = StateStore(directory: directory)
+        let tracker = SessionTracker(clock: clock, store: store)
+        let todayCheckIn = try XCTUnwrap(DateComponents(calendar: clock.calendar, timeZone: clock.calendar.timeZone, year: 2026, month: 11, day: 11, hour: 6, minute: 39, second: 12).date)
+        let record = AttendanceRecord(workDate: "2026-11-11", checkInAt: todayCheckIn, sourceText: "출근 2026.11.11 06:39:12")
+        try store.save(AppState(todaySession: record.session, gwStatus: .attendance(record), notificationSentForDate: nil))
+        let cache = WeeklyAttendanceCache(
+            weekStart: "2026-11-09",
+            fetchedAt: todayCheckIn,
+            records: [WeeklyAttendanceRecord(workDate: "2026-11-11", kind: .attendance, checkInAt: todayCheckIn.addingTimeInterval(-12), sourceText: "2026-11-11 06:39")]
+        )
+
+        let updated = try tracker.updateWeeklyAttendanceCache(cache)
+
+        XCTAssertEqual(updated.todaySession, record.session)
+        XCTAssertEqual(updated.gwStatus, .attendance(record))
+    }
+
+    func testStartOrResumeKeepsWeeklyCheckInAfterTodayLookupFailsAgain() throws {
+        let clock = WorkdayClock(timeZone: TimeZone(identifier: "Asia/Seoul")!)
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let store = StateStore(directory: directory)
+        let tracker = SessionTracker(clock: clock, store: store)
+        let localStart = try XCTUnwrap(DateComponents(calendar: clock.calendar, timeZone: clock.calendar.timeZone, year: 2026, month: 11, day: 11, hour: 5, minute: 21, second: 19).date)
+        let gwCheckIn = try XCTUnwrap(DateComponents(calendar: clock.calendar, timeZone: clock.calendar.timeZone, year: 2026, month: 11, day: 11, hour: 6, minute: 39).date)
+        let now = try XCTUnwrap(DateComponents(calendar: clock.calendar, timeZone: clock.calendar.timeZone, year: 2026, month: 11, day: 11, hour: 9).date)
+        try store.save(AppState(todaySession: WorkSession(workDate: "2026-11-11", workStartAt: localStart), gwStatus: .notConfigured, notificationSentForDate: nil))
+        _ = try tracker.updateWeeklyAttendanceCache(WeeklyAttendanceCache(
+            weekStart: "2026-11-09",
+            fetchedAt: gwCheckIn,
+            records: [WeeklyAttendanceRecord(workDate: "2026-11-11", kind: .attendance, checkInAt: gwCheckIn, sourceText: "2026-11-11 06:39")]
+        ))
+        _ = try tracker.updateGWStatus(.requiresWebLogin("GW 웹 로그인이 필요합니다."))
+
+        let updated = try tracker.startOrResume(now: now, preferredStart: localStart)
+
+        XCTAssertEqual(updated.todaySession?.workStartAt, gwCheckIn)
+    }
+
+    func testWeeklyRecordWithoutCheckInKeepsLocalSession() throws {
+        let clock = WorkdayClock(timeZone: TimeZone(identifier: "Asia/Seoul")!)
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let store = StateStore(directory: directory)
+        let tracker = SessionTracker(clock: clock, store: store)
+        let localStart = try XCTUnwrap(DateComponents(calendar: clock.calendar, timeZone: clock.calendar.timeZone, year: 2026, month: 11, day: 11, hour: 9).date)
+        let session = WorkSession(workDate: "2026-11-11", workStartAt: localStart)
+        try store.save(AppState(todaySession: session, gwStatus: .notConfigured, notificationSentForDate: nil))
+        let cache = WeeklyAttendanceCache(
+            weekStart: "2026-11-09",
+            fetchedAt: localStart,
+            records: [WeeklyAttendanceRecord(workDate: "2026-11-11", kind: .creditedLeave, creditedDuration: 4 * 60 * 60, sourceText: "2026-11-11 반차")]
+        )
+
+        let updated = try tracker.updateWeeklyAttendanceCache(cache)
+
+        XCTAssertEqual(updated.todaySession, session)
+        XCTAssertEqual(updated.gwStatus, .notConfigured)
+    }
+
     func testClearingLoginStateClearsWeeklyAttendanceCache() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         let store = StateStore(directory: directory)
