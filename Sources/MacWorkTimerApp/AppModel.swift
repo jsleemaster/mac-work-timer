@@ -309,7 +309,7 @@ final class AppModel: NSObject, ObservableObject {
                 records: thisWeekRecords
             )
             do {
-                self.state = try self.tracker.updateWeeklyAttendanceCache(cache)
+                self.state = try self.tracker.updateWeeklyAttendanceCache(cache, now: self.now)
                 self.updateNotificationIfNeeded(force: true)
             } catch {
                 self.statusMessage = error.localizedDescription
