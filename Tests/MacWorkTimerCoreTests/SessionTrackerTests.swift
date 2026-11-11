@@ -24,6 +24,118 @@ final class SessionTrackerTests: XCTestCase {
         XCTAssertEqual(try store.load().weeklyAttendanceCache, cache)
     }
 
+    private let kstClock = WorkdayClock(timeZone: TimeZone(identifier: "Asia/Seoul")!)
+
+    private func kst(day: Int = 11, _ hour: Int, _ minute: Int, _ second: Int = 0) throws -> Date {
+        try XCTUnwrap(DateComponents(calendar: kstClock.calendar, timeZone: kstClock.calendar.timeZone, year: 2026, month: 11, day: day, hour: hour, minute: minute, second: second).date)
+    }
+
+    private func makeTracker(_ state: AppState) throws -> (SessionTracker, StateStore) {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let store = StateStore(directory: directory)
+        try store.save(state)
+        return (SessionTracker(clock: kstClock, store: store), store)
+    }
+
+    private func weekly(_ records: [WeeklyAttendanceRecord]) throws -> WeeklyAttendanceCache {
+        WeeklyAttendanceCache(weekStart: "2026-11-09", fetchedAt: try kst(7, 9), records: records)
+    }
+
+    private func checkIn(day: Int = 11, _ date: Date) -> WeeklyAttendanceRecord {
+        WeeklyAttendanceRecord(workDate: String(format: "2026-11-%02d", day), kind: .attendance, checkInAt: date, sourceText: "출근")
+    }
+
+    func testWeeklyCheckInReplacesLocalFallbackStartForToday() throws {
+        let localStart = try kst(5, 21, 19)
+        let gwCheckIn = try kst(6, 39)
+        let loginNeeded = GWStatus.requiresWebLogin("GW 웹 로그인이 필요합니다.")
+        let (tracker, store) = try makeTracker(AppState(
+            todaySession: WorkSession(workDate: "2026-11-11", workStartAt: localStart, workdayMode: .afternoonHalfDay),
+            gwStatus: loginNeeded,
+            notificationSentForDate: "2026-11-11"
+        ))
+
+        let updated = try tracker.updateWeeklyAttendanceCache(try weekly([checkIn(gwCheckIn)]), now: try kst(7, 9))
+
+        XCTAssertEqual(updated.todaySession, WorkSession(workDate: "2026-11-11", workStartAt: gwCheckIn, workdayMode: .afternoonHalfDay))
+        XCTAssertEqual(updated.currentSession(on: try kst(7, 9), clock: kstClock)?.workStartAt, gwCheckIn)
+        XCTAssertEqual(updated.gwStatus, loginNeeded)
+        XCTAssertNil(updated.notificationSentForDate)
+        XCTAssertEqual(try store.load(), updated)
+    }
+
+    func testWeeklyCheckInUsesEarliestRowOfTheDay() throws {
+        let (tracker, _) = try makeTracker(AppState(todaySession: WorkSession(workDate: "2026-11-11", workStartAt: try kst(5, 21)), gwStatus: .notConfigured, notificationSentForDate: nil))
+
+        let updated = try tracker.updateWeeklyAttendanceCache(try weekly([checkIn(try kst(18, 30)), checkIn(try kst(6, 39))]), now: try kst(19, 0))
+
+        XCTAssertEqual(updated.todaySession?.workStartAt, try kst(6, 39))
+    }
+
+    func testWeeklyCheckInDoesNotOverrideTodaysAttendanceRecord() throws {
+        let record = AttendanceRecord(workDate: "2026-11-11", checkInAt: try kst(6, 39, 12), sourceText: "출근 2026.11.11 06:39:12")
+        let (tracker, _) = try makeTracker(AppState(todaySession: record.session, gwStatus: .attendance(record), notificationSentForDate: "2026-11-11"))
+
+        let updated = try tracker.updateWeeklyAttendanceCache(try weekly([checkIn(try kst(6, 39))]), now: try kst(9, 0))
+
+        XCTAssertEqual(updated.todaySession, record.session)
+        XCTAssertEqual(updated.gwStatus, .attendance(record))
+        XCTAssertEqual(updated.notificationSentForDate, "2026-11-11")
+    }
+
+    func testNewerWeeklyCheckInUpdatesAnEarlierWeeklyStart() throws {
+        let (tracker, _) = try makeTracker(AppState(todaySession: WorkSession(workDate: "2026-11-11", workStartAt: try kst(5, 21)), gwStatus: .notConfigured, notificationSentForDate: nil))
+        _ = try tracker.updateWeeklyAttendanceCache(try weekly([checkIn(try kst(6, 39))]), now: try kst(7, 0))
+
+        let updated = try tracker.updateWeeklyAttendanceCache(try weekly([checkIn(try kst(7, 10))]), now: try kst(9, 0))
+
+        XCTAssertEqual(updated.todaySession?.workStartAt, try kst(7, 10))
+    }
+
+    func testStartOrResumeKeepsWeeklyCheckInAfterTodayLookupFailsAgain() throws {
+        let localStart = try kst(5, 21, 19)
+        let (tracker, _) = try makeTracker(AppState(todaySession: WorkSession(workDate: "2026-11-11", workStartAt: localStart), gwStatus: .notConfigured, notificationSentForDate: nil))
+        _ = try tracker.updateWeeklyAttendanceCache(try weekly([checkIn(try kst(6, 39))]), now: try kst(7, 0))
+        _ = try tracker.updateGWStatus(.requiresWebLogin("GW 웹 로그인이 필요합니다."))
+        _ = try tracker.markNotificationSent(for: "2026-11-11")
+
+        let updated = try tracker.startOrResume(now: try kst(9, 0), preferredStart: localStart)
+
+        XCTAssertEqual(updated.todaySession?.workStartAt, try kst(6, 39))
+        XCTAssertEqual(updated.notificationSentForDate, "2026-11-11")
+    }
+
+    func testStartOrResumeSeedsNewSessionFromCachedWeeklyCheckIn() throws {
+        var state = AppState.empty
+        state.weeklyAttendanceCache = try weekly([checkIn(try kst(6, 39))])
+        let (tracker, _) = try makeTracker(state)
+
+        let updated = try tracker.startOrResume(now: try kst(9, 0), preferredStart: try kst(5, 21))
+
+        XCTAssertEqual(updated.todaySession?.workStartAt, try kst(6, 39))
+    }
+
+    func testWeeklyCheckInLeavesPreviousDaySessionAlone() throws {
+        let yesterday = WorkSession(workDate: "2026-11-10", workStartAt: try kst(day: 10, 9, 0))
+        let (tracker, _) = try makeTracker(AppState(todaySession: yesterday, gwStatus: .notConfigured, notificationSentForDate: "2026-11-10"))
+
+        let updated = try tracker.updateWeeklyAttendanceCache(try weekly([checkIn(day: 10, try kst(day: 10, 10, 22))]), now: try kst(0, 30))
+
+        XCTAssertEqual(updated.todaySession, yesterday)
+        XCTAssertEqual(updated.notificationSentForDate, "2026-11-10")
+    }
+
+    func testWeeklyRecordWithoutCheckInKeepsLocalSession() throws {
+        let session = WorkSession(workDate: "2026-11-11", workStartAt: try kst(9, 0))
+        let (tracker, _) = try makeTracker(AppState(todaySession: session, gwStatus: .notConfigured, notificationSentForDate: nil))
+        let leave = WeeklyAttendanceRecord(workDate: "2026-11-11", kind: .creditedLeave, creditedDuration: 4 * 60 * 60, sourceText: "2026-11-11 반차")
+
+        let updated = try tracker.updateWeeklyAttendanceCache(try weekly([leave]), now: try kst(9, 30))
+
+        XCTAssertEqual(updated.todaySession, session)
+        XCTAssertEqual(updated.gwStatus, .notConfigured)
+    }
+
     func testClearingLoginStateClearsWeeklyAttendanceCache() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         let store = StateStore(directory: directory)

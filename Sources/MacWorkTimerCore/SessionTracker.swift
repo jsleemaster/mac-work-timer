@@ -37,6 +37,7 @@ public final class SessionTracker {
                 state.notificationSentForDate = nil
             }
         }
+        applyWeeklyCheckIn(to: &state, today: workDate)
         try store.save(state)
         return state
     }
@@ -55,7 +56,19 @@ public final class SessionTracker {
             return false
         }
 
+        if weeklyCheckIn(for: workDate, in: state.weeklyAttendanceCache) != nil {
+            return false
+        }
+
         return true
+    }
+
+    /// Earliest GW check-in the weekly list holds for the date. A day can carry several rows.
+    private func weeklyCheckIn(for workDate: String, in cache: WeeklyAttendanceCache?) -> Date? {
+        cache?.records
+            .filter { $0.workDate == workDate && $0.kind == .attendance }
+            .compactMap(\.checkInAt)
+            .min()
     }
 
     @discardableResult
@@ -76,11 +89,34 @@ public final class SessionTracker {
     }
 
     @discardableResult
-    public func updateWeeklyAttendanceCache(_ cache: WeeklyAttendanceCache) throws -> AppState {
+    public func updateWeeklyAttendanceCache(_ cache: WeeklyAttendanceCache, now: Date = Date()) throws -> AppState {
         var state = try store.load()
         state.weeklyAttendanceCache = cache
+        applyWeeklyCheckIn(to: &state, today: clock.workDate(for: now))
         try store.save(state)
         return state
+    }
+
+    /// The today-status lookup is often blocked by second-factor login while the weekly list
+    /// still loads, which would leave today's timer on the local activity guess. When the weekly
+    /// list carries today's GW check-in, it replaces that guess — but never a today-status record.
+    /// `gwStatus` is left alone so the UI keeps saying the web login still needs attention.
+    private func applyWeeklyCheckIn(to state: inout AppState, today: String) {
+        guard let session = state.todaySession, session.workDate == today else {
+            return
+        }
+        if case .attendance(let record) = state.gwStatus, record.workDate == today {
+            return
+        }
+        guard let checkInAt = weeklyCheckIn(for: today, in: state.weeklyAttendanceCache),
+              checkInAt != session.workStartAt else {
+            return
+        }
+
+        state.todaySession = WorkSession(workDate: today, workStartAt: checkInAt, workdayMode: session.workdayMode)
+        if state.notificationSentForDate == today {
+            state.notificationSentForDate = nil
+        }
     }
 
     @discardableResult
