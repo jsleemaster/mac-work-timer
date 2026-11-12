@@ -85,6 +85,85 @@ final class WeeklyWorkBalanceCalculatorTests: XCTestCase {
         XCTAssertEqual(summary.allFlexUsedTargetAt, try date("2026-07-29", "16:30"))
     }
 
+    func testQuarterDayModeAloneShortensTodayByTwoHours() throws {
+        let records = try [
+            attendance("2026-07-27", "09:00", "18:00"),
+            attendance("2026-07-28", "09:00", "18:00")
+        ]
+        let session = WorkSession(
+            workDate: "2026-07-29",
+            workStartAt: try date("2026-07-29", "09:00"),
+            workdayMode: .quarterDay
+        )
+
+        let summary = try XCTUnwrap(calculator.summary(
+            records: records,
+            todaySession: session,
+            fetchedAt: try date("2026-07-29", "10:00")
+        ))
+
+        XCTAssertEqual(summary.balance, 0, accuracy: 0.1)
+        XCTAssertEqual(summary.normalTargetAt, try date("2026-07-29", "16:00"))
+        XCTAssertEqual(summary.allFlexUsedTargetAt, try date("2026-07-29", "16:00"))
+    }
+
+    /// The menu's 반반차 and the groupware's 반반차 are the same two hours; counting both
+    /// used to hand back four, ending the day two hours early.
+    func testQuarterDayModeAndGroupwareLeaveCountOnce() throws {
+        let records = try [
+            attendance("2026-07-27", "09:00", "18:00"),
+            attendance("2026-07-28", "09:00", "18:00"),
+            WeeklyAttendanceRecord(
+                workDate: "2026-07-29",
+                kind: .creditedLeave,
+                creditedDuration: 2 * 60 * 60,
+                sourceText: "2026-07-29 법정휴가 반반차"
+            )
+        ]
+        let session = WorkSession(
+            workDate: "2026-07-29",
+            workStartAt: try date("2026-07-29", "09:00"),
+            workdayMode: .quarterDay
+        )
+
+        let summary = try XCTUnwrap(calculator.summary(
+            records: records,
+            todaySession: session,
+            fetchedAt: try date("2026-07-29", "10:00")
+        ))
+
+        XCTAssertEqual(summary.balance, 2 * 60 * 60, accuracy: 0.1)
+        XCTAssertEqual(summary.allFlexUsedTargetAt, try date("2026-07-29", "16:00"))
+    }
+
+    func testHalfDayModeAndGroupwareLeaveCountOnce() throws {
+        let records = try [
+            attendance("2026-07-27", "09:00", "18:00"),
+            attendance("2026-07-28", "09:00", "18:00"),
+            WeeklyAttendanceRecord(
+                workDate: "2026-07-29",
+                kind: .creditedLeave,
+                creditedDuration: 4 * 60 * 60,
+                sourceText: "2026-07-29 법정휴가 오후반차"
+            )
+        ]
+        let session = WorkSession(
+            workDate: "2026-07-29",
+            workStartAt: try date("2026-07-29", "09:00"),
+            workdayMode: .afternoonHalfDay
+        )
+
+        let summary = try XCTUnwrap(calculator.summary(
+            records: records,
+            todaySession: session,
+            fetchedAt: try date("2026-07-29", "10:00")
+        ))
+
+        // 4h owed across lunch ends 14:00. Used to be 09:00: 4h owed minus a balance that
+        // already held the same 4h of leave.
+        XCTAssertEqual(summary.allFlexUsedTargetAt, try date("2026-07-29", "14:00"))
+    }
+
     /// A surplus large enough to end the day before noon must not keep charging the lunch hour:
     /// the target used to land an hour late, quietly asking for an extra hour of work.
     func testLargeSurplusTargetsTheHourItActuallyOwes() throws {
