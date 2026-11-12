@@ -94,11 +94,13 @@ public struct WeeklyWorkBalanceCalculator: Sendable {
             //
             // Today's leave reaches us twice: as the groupware credit already folded into
             // `balance`, and as the menu's shorter workday. Both describe the same leave, so
-            // take the larger of the two once instead of subtracting it from both sides.
-            let fullDay = WorkdayMode.fullDay.workDuration
-            let todayLeave = max(todayCreditedLeave, fullDay - todaySession.workdayMode.workDuration)
-            let balanceBeforeToday = balance - todayCreditedLeave
-            let workLeftToday = max(0, fullDay - todayLeave - balanceBeforeToday)
+            // the day owes the menu's work plus the credit back, capped at a full day -
+            // the larger of the two leaves counted once, never both.
+            let owedBeforeBalance = min(
+                Self.dailyTargetDuration,
+                todaySession.workdayMode.workDuration + todayCreditedLeave
+            )
+            let workLeftToday = max(0, owedBeforeBalance - balance)
             allFlexUsedTargetAt = max(
                 lunch.endOfWork(startingAt: todaySession.workStartAt, creditedWork: workLeftToday),
                 todaySession.workStartAt
