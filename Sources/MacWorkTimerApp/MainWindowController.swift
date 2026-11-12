@@ -78,6 +78,9 @@ final class MainWindowController: NSObject, NSWindowDelegate {
             defer: false
         )
         window.title = "Mac Work Timer"
+        // The login content paints its own light background, so system label colors would
+        // turn white on white in dark mode. Pin the window to light; the GW page is light too.
+        window.appearance = NSAppearance(named: .aqua)
         window.contentViewController = NSHostingController(rootView: contentView)
         window.center()
         window.isReleasedWhenClosed = false
