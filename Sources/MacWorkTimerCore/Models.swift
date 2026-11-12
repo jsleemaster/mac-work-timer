@@ -117,6 +117,18 @@ public struct AttendanceRecord: Codable, Equatable, Sendable {
     }
 }
 
+/// A check-out the user typed in for a day GW recorded a check-in but no check-out
+/// (a forgotten tag-out). It only fills that gap: a check-out GW reports later always wins.
+public struct ManualCheckOut: Codable, Equatable, Sendable {
+    public let workDate: String
+    public let checkOutAt: Date
+
+    public init(workDate: String, checkOutAt: Date) {
+        self.workDate = workDate
+        self.checkOutAt = checkOutAt
+    }
+}
+
 public struct AppState: Codable, Equatable, Sendable {
     public var todaySession: WorkSession?
     public var gwStatus: GWStatus
@@ -127,6 +139,7 @@ public struct AppState: Codable, Equatable, Sendable {
     /// Holidays the user registered by hand. GW-reported holidays are not stored here;
     /// they are derived from `weeklyAttendanceCache` so a refresh always wins.
     public var holidays: [HolidayEntry]
+    public var manualCheckOuts: [ManualCheckOut]
 
     public init(
         todaySession: WorkSession?,
@@ -135,7 +148,8 @@ public struct AppState: Codable, Equatable, Sendable {
         petReveal: PetRevealState? = nil,
         workdayModeSelection: WorkdayModeSelection? = nil,
         weeklyAttendanceCache: WeeklyAttendanceCache? = nil,
-        holidays: [HolidayEntry] = []
+        holidays: [HolidayEntry] = [],
+        manualCheckOuts: [ManualCheckOut] = []
     ) {
         self.todaySession = todaySession
         self.gwStatus = gwStatus
@@ -144,6 +158,7 @@ public struct AppState: Codable, Equatable, Sendable {
         self.workdayModeSelection = workdayModeSelection
         self.weeklyAttendanceCache = weeklyAttendanceCache
         self.holidays = holidays
+        self.manualCheckOuts = manualCheckOuts
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -154,6 +169,7 @@ public struct AppState: Codable, Equatable, Sendable {
         case workdayModeSelection
         case weeklyAttendanceCache
         case holidays
+        case manualCheckOuts
     }
 
     public init(from decoder: Decoder) throws {
@@ -165,6 +181,65 @@ public struct AppState: Codable, Equatable, Sendable {
         self.workdayModeSelection = try container.decodeIfPresent(WorkdayModeSelection.self, forKey: .workdayModeSelection)
         self.weeklyAttendanceCache = try container.decodeIfPresent(WeeklyAttendanceCache.self, forKey: .weeklyAttendanceCache)
         self.holidays = try container.decodeIfPresent([HolidayEntry].self, forKey: .holidays) ?? []
+        self.manualCheckOuts = try container.decodeIfPresent([ManualCheckOut].self, forKey: .manualCheckOuts) ?? []
+    }
+
+    /// The cached GW week with hand-entered check-outs filling the days GW left open.
+    /// Only attendance rows with no check-out are touched, so a real GW check-out wins. A day
+    /// with several open rows (a re-tag with no tag-out) becomes one span from its earliest
+    /// check-in, since one typed check-out cannot close them separately.
+    public var effectiveWeeklyAttendanceCache: WeeklyAttendanceCache? {
+        guard let cache = weeklyAttendanceCache, !manualCheckOuts.isEmpty else {
+            return weeklyAttendanceCache
+        }
+        let manualByDate = Dictionary(
+            manualCheckOuts.map { ($0.workDate, $0.checkOutAt) },
+            uniquingKeysWith: { _, latest in latest }
+        )
+        let earliestOpenCheckIn = Dictionary(
+            cache.records.filter(Self.isOpenAttendance).compactMap { record in
+                record.checkInAt.map { (record.workDate, $0) }
+            },
+            uniquingKeysWith: min
+        )
+        var closedDates = Set<String>()
+        let records = cache.records.compactMap { record -> WeeklyAttendanceRecord? in
+            guard Self.isOpenAttendance(record),
+                  let checkOutAt = manualByDate[record.workDate],
+                  let checkInAt = earliestOpenCheckIn[record.workDate],
+                  checkOutAt > checkInAt else {
+                return record
+            }
+            guard closedDates.insert(record.workDate).inserted else {
+                return nil
+            }
+            return WeeklyAttendanceRecord(
+                workDate: record.workDate,
+                kind: .attendance,
+                checkInAt: checkInAt,
+                checkOutAt: checkOutAt,
+                sourceText: record.sourceText
+            )
+        }
+        return WeeklyAttendanceCache(weekStart: cache.weekStart, fetchedAt: cache.fetchedAt, records: records)
+    }
+
+    /// Days of the cached week before `workDate` that clocked in but never out, one row per day
+    /// carrying its earliest check-in, oldest first. Today is left out: its check-out simply has
+    /// not happened yet. A cache from another week offers nothing, as it cannot move the summary.
+    public func missingCheckOuts(before workDate: String, weekStart: String) -> [WeeklyAttendanceRecord] {
+        guard let cache = effectiveWeeklyAttendanceCache, cache.weekStart == weekStart else {
+            return []
+        }
+        var seen = Set<String>()
+        return cache.records
+            .filter { Self.isOpenAttendance($0) && $0.workDate < workDate }
+            .sorted { ($0.workDate, $0.checkInAt ?? .distantPast) < ($1.workDate, $1.checkInAt ?? .distantPast) }
+            .filter { seen.insert($0.workDate).inserted }
+    }
+
+    private static func isOpenAttendance(_ record: WeeklyAttendanceRecord) -> Bool {
+        record.kind == .attendance && record.checkInAt != nil && record.checkOutAt == nil
     }
 
     /// Manual entries merged with whatever holidays the cached GW week reported.
