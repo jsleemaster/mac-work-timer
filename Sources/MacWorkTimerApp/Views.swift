@@ -77,6 +77,11 @@ private struct LoginView: View {
             .padding(.horizontal, 20)
             .padding(.top, 18)
 
+            if !model.missingCheckOuts.isEmpty {
+                MissingCheckOutSection()
+                    .padding(.horizontal, 20)
+            }
+
             GWWebLoginView(
                 onAuthenticatedSession: {
                     model.authenticatedWebSessionDidBecomeAvailable()
@@ -113,6 +118,12 @@ struct SettingsView: View {
             Divider()
 
             HolidaySettingsSection()
+
+            if !model.manualCheckOuts.isEmpty {
+                Divider()
+
+                ManualCheckOutSettingsSection()
+            }
         }
         .padding(22)
         .frame(width: 380)
@@ -175,6 +186,97 @@ private struct HolidaySettingsSection: View {
                     }
                 }
                 .frame(maxHeight: 160)
+            }
+        }
+    }
+}
+
+/// Lets the user type in a check-out GW never recorded, so a forgotten tag-out stops the
+/// weekly summary from staying incomplete (and this window from staying open) all week.
+private struct MissingCheckOutSection: View {
+    @EnvironmentObject private var model: AppModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("퇴근 기록이 없는 날")
+                .font(.system(size: 13, weight: .semibold))
+            Text("GW 에 출근만 찍힌 날이 있어 주간 집계를 끝낼 수 없습니다. 퇴근 시각을 직접 넣으면 바로 다시 계산되고, 나중에 GW 에 퇴근 기록이 생기면 그 값이 우선합니다.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            ForEach(model.missingCheckOuts, id: \.workDate) { record in
+                MissingCheckOutRow(record: record)
+            }
+        }
+        .padding(12)
+        .background(.white.opacity(0.7))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+}
+
+private struct MissingCheckOutRow: View {
+    @EnvironmentObject private var model: AppModel
+    let record: WeeklyAttendanceRecord
+    @State private var draftTime: Date
+
+    init(record: WeeklyAttendanceRecord) {
+        self.record = record
+        // Start from a full day after check-in (8h + lunch), the most likely tag-out.
+        let suggested = (record.checkInAt ?? Date()).addingTimeInterval(9 * 60 * 60)
+        _draftTime = State(initialValue: suggested)
+    }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Text(record.workDate)
+                .font(.system(size: 12, design: .monospaced))
+            if let checkInAt = record.checkInAt {
+                Text("출근 \(DateFormatting.time.string(from: checkInAt))")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Text("퇴근")
+                .font(.system(size: 12))
+            DatePicker("", selection: $draftTime, displayedComponents: .hourAndMinute)
+                .labelsHidden()
+                .environment(\.timeZone, TimeZone(identifier: "Asia/Seoul")!)
+            Button("입력") {
+                model.setManualCheckOut(draftTime, for: record)
+            }
+        }
+    }
+}
+
+private struct ManualCheckOutSettingsSection: View {
+    @EnvironmentObject private var model: AppModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("직접 입력한 퇴근")
+                .font(.system(size: 13, weight: .semibold))
+            Text("GW 에 퇴근 기록이 없어 직접 넣은 값입니다. 지우면 다시 입력할 수 있습니다.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            ForEach(model.manualCheckOuts, id: \.workDate) { entry in
+                HStack {
+                    Text(entry.workDate)
+                        .font(.system(size: 12, design: .monospaced))
+                    Text("퇴근 \(DateFormatting.time.string(from: entry.checkOutAt))")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Button {
+                        model.clearManualCheckOut(for: entry.workDate)
+                    } label: {
+                        Image(systemName: "trash")
+                    }
+                    .buttonStyle(.borderless)
+                    .help("직접 입력한 퇴근 삭제")
+                }
             }
         }
     }

@@ -121,14 +121,29 @@ public final class SessionTracker {
 
     @discardableResult
     public func clearSessionAndGWStatus() throws -> AppState {
-        // Manually registered holidays are user configuration, not GW state, so a logout keeps them.
-        let holidays = (try? store.load().holidays) ?? []
+        // Manually registered holidays and check-outs are user input, not GW state, so a logout keeps them.
+        let previous = try? store.load()
         let state = AppState(
             todaySession: nil,
             gwStatus: .notConfigured,
             notificationSentForDate: nil,
-            holidays: holidays
+            holidays: previous?.holidays ?? [],
+            manualCheckOuts: previous?.manualCheckOuts ?? []
         )
+        try store.save(state)
+        return state
+    }
+
+    /// Records or clears (`nil`) a hand-entered check-out for a day GW left open. Entries
+    /// from weeks before the cached one can no longer affect anything, so they are dropped.
+    @discardableResult
+    public func setManualCheckOut(_ checkOutAt: Date?, for workDate: String) throws -> AppState {
+        var state = try store.load()
+        let weekStart = state.weeklyAttendanceCache?.weekStart ?? ""
+        state.manualCheckOuts.removeAll { $0.workDate == workDate || $0.workDate < weekStart }
+        if let checkOutAt {
+            state.manualCheckOuts.append(ManualCheckOut(workDate: workDate, checkOutAt: checkOutAt))
+        }
         try store.save(state)
         return state
     }

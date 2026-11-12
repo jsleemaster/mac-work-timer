@@ -77,7 +77,7 @@ final class AppModel: NSObject, ObservableObject {
 
     var weeklySummary: WeeklyWorkSummary? {
         guard let currentSession,
-              let cache = state.weeklyAttendanceCache else {
+              let cache = state.effectiveWeeklyAttendanceCache else {
             return nil
         }
         return weeklyCalculator.summary(
@@ -357,6 +357,57 @@ final class AppModel: NSObject, ObservableObject {
 
     var holidays: [HolidayEntry] {
         state.holidays
+    }
+
+    /// Days this week that clocked in but never out, which keep the weekly summary
+    /// incomplete until GW is corrected or the user types the check-out in.
+    var missingCheckOuts: [WeeklyAttendanceRecord] {
+        state.missingCheckOuts(before: todayWorkDate)
+    }
+
+    var manualCheckOuts: [ManualCheckOut] {
+        state.manualCheckOuts
+    }
+
+    /// Saves `time`'s hour and minute as the check-out of `record`'s day.
+    func setManualCheckOut(_ time: Date, for record: WeeklyAttendanceRecord) {
+        guard let checkInAt = record.checkInAt,
+              let day = DateFormatting.full.date(from: "\(record.workDate) 00:00") else {
+            return
+        }
+        let parts = clock.calendar.dateComponents([.hour, .minute], from: time)
+        guard let checkOutAt = clock.calendar.date(
+            bySettingHour: parts.hour ?? 0,
+            minute: parts.minute ?? 0,
+            second: 0,
+            of: day
+        ) else {
+            return
+        }
+        guard checkOutAt > checkInAt else {
+            statusMessage = "퇴근 시각은 출근 시각(\(DateFormatting.time.string(from: checkInAt))) 이후여야 합니다."
+            return
+        }
+        guard checkOutAt <= now else {
+            statusMessage = "아직 지나지 않은 시각은 입력할 수 없습니다."
+            return
+        }
+        do {
+            state = try tracker.setManualCheckOut(checkOutAt, for: record.workDate)
+            statusMessage = nil
+            updateNotificationIfNeeded(force: true)
+        } catch {
+            statusMessage = error.localizedDescription
+        }
+    }
+
+    func clearManualCheckOut(for workDate: String) {
+        do {
+            state = try tracker.setManualCheckOut(nil, for: workDate)
+            updateNotificationIfNeeded(force: true)
+        } catch {
+            statusMessage = error.localizedDescription
+        }
     }
 
     var todayWorkDate: String {
