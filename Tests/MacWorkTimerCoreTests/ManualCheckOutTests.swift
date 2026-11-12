@@ -60,7 +60,7 @@ final class ManualCheckOutTests: XCTestCase {
         let state = try reportedWeek()
 
         // Today's open check-in is the running day, not a gap.
-        XCTAssertEqual(state.missingCheckOuts(before: "2026-11-12").map(\.workDate), ["2026-11-11"])
+        XCTAssertEqual(state.missingCheckOuts(before: "2026-11-12", weekStart: "2026-11-09").map(\.workDate), ["2026-11-11"])
         XCTAssertFalse(try summary(state).isComplete)
     }
 
@@ -70,7 +70,7 @@ final class ManualCheckOutTests: XCTestCase {
         let updated = try tracker.setManualCheckOut(try kst(11, 15, 39), for: "2026-11-11")
 
         XCTAssertEqual(try store.load().manualCheckOuts, [ManualCheckOut(workDate: "2026-11-11", checkOutAt: try kst(11, 15, 39))])
-        XCTAssertTrue(updated.missingCheckOuts(before: "2026-11-12").isEmpty)
+        XCTAssertTrue(updated.missingCheckOuts(before: "2026-11-12", weekStart: "2026-11-09").isEmpty)
         let summary = try summary(updated)
         XCTAssertTrue(summary.isComplete)
         // Mon 8h29 + Tue 8h02 + Wed (06:39-15:39 less lunch = 8h) + 반반차 2h, against 24h.
@@ -95,7 +95,42 @@ final class ManualCheckOutTests: XCTestCase {
         var state = try reportedWeek()
         state.manualCheckOuts = [ManualCheckOut(workDate: "2026-11-11", checkOutAt: try kst(11, 6, 0))]
 
-        XCTAssertEqual(state.missingCheckOuts(before: "2026-11-12").map(\.workDate), ["2026-11-11"])
+        XCTAssertEqual(state.missingCheckOuts(before: "2026-11-12", weekStart: "2026-11-09").map(\.workDate), ["2026-11-11"])
+    }
+
+    func testSeveralOpenRowsOnOneDayCloseAsOneSpan() throws {
+        var state = try reportedWeek()
+        let wednesdayRetag = try attendance(11, (13, 5), nil)
+        state.weeklyAttendanceCache = WeeklyAttendanceCache(
+            weekStart: "2026-11-09",
+            fetchedAt: try kst(12, 11, 12),
+            records: [wednesdayRetag] + state.weeklyAttendanceCache!.records
+        )
+
+        // The earliest check-in is the one offered, whatever order GW listed the rows in.
+        XCTAssertEqual(state.missingCheckOuts(before: "2026-11-12", weekStart: "2026-11-09").first?.checkInAt, try kst(11, 6, 39))
+
+        state.manualCheckOuts = [ManualCheckOut(workDate: "2026-11-11", checkOutAt: try kst(11, 15, 39))]
+        let wednesday = state.effectiveWeeklyAttendanceCache!.records.filter { $0.workDate == "2026-11-11" && $0.kind == .attendance }
+        XCTAssertEqual(wednesday.count, 1)
+        XCTAssertEqual(wednesday.first?.checkInAt, try kst(11, 6, 39))
+        XCTAssertTrue(try summary(state).isComplete)
+    }
+
+    func testAnotherWeeksCacheOffersNothing() throws {
+        let state = try reportedWeek()
+
+        XCTAssertTrue(state.missingCheckOuts(before: "2026-11-16", weekStart: "2026-11-16").isEmpty)
+    }
+
+    func testWeeklyRefreshDropsEntriesFromEarlierWeeks() throws {
+        var state = try reportedWeek()
+        state.manualCheckOuts = [ManualCheckOut(workDate: "2026-11-11", checkOutAt: try kst(11, 15, 39))]
+        let (tracker, store) = try makeTracker(state)
+
+        try tracker.updateWeeklyAttendanceCache(WeeklyAttendanceCache(weekStart: "2026-11-16", fetchedAt: try kst(16, 10, 0), records: []))
+
+        XCTAssertTrue(try store.load().manualCheckOuts.isEmpty)
     }
 
     func testClearingAndOldWeeksAreDropped() throws {

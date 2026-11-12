@@ -92,6 +92,7 @@ public final class SessionTracker {
     public func updateWeeklyAttendanceCache(_ cache: WeeklyAttendanceCache, now: Date = Date()) throws -> AppState {
         var state = try store.load()
         state.weeklyAttendanceCache = cache
+        state.manualCheckOuts.removeAll { $0.workDate < cache.weekStart }
         applyWeeklyCheckIn(to: &state, today: clock.workDate(for: now))
         try store.save(state)
         return state

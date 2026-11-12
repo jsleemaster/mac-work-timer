@@ -241,7 +241,7 @@ private struct MissingCheckOutRow: View {
                 .font(.system(size: 12))
             DatePicker("", selection: $draftTime, displayedComponents: .hourAndMinute)
                 .labelsHidden()
-                .environment(\.timeZone, TimeZone(identifier: "Asia/Seoul")!)
+                .environment(\.timeZone, model.timeZone)
             Button("입력") {
                 model.setManualCheckOut(draftTime, for: record)
             }

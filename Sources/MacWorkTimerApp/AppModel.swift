@@ -362,7 +362,14 @@ final class AppModel: NSObject, ObservableObject {
     /// Days this week that clocked in but never out, which keep the weekly summary
     /// incomplete until GW is corrected or the user types the check-out in.
     var missingCheckOuts: [WeeklyAttendanceRecord] {
-        state.missingCheckOuts(before: todayWorkDate)
+        state.missingCheckOuts(
+            before: todayWorkDate,
+            weekStart: weeklyCalculator.weekStartString(containing: now)
+        )
+    }
+
+    var timeZone: TimeZone {
+        clock.calendar.timeZone
     }
 
     var manualCheckOuts: [ManualCheckOut] {
@@ -371,17 +378,14 @@ final class AppModel: NSObject, ObservableObject {
 
     /// Saves `time`'s hour and minute as the check-out of `record`'s day.
     func setManualCheckOut(_ time: Date, for record: WeeklyAttendanceRecord) {
-        guard let checkInAt = record.checkInAt,
-              let day = DateFormatting.full.date(from: "\(record.workDate) 00:00") else {
-            return
-        }
         let parts = clock.calendar.dateComponents([.hour, .minute], from: time)
-        guard let checkOutAt = clock.calendar.date(
-            bySettingHour: parts.hour ?? 0,
-            minute: parts.minute ?? 0,
-            second: 0,
-            of: day
-        ) else {
+        guard let checkInAt = record.checkInAt,
+              let checkOutAt = clock.calendar.date(
+                  bySettingHour: parts.hour ?? 0,
+                  minute: parts.minute ?? 0,
+                  second: 0,
+                  of: checkInAt
+              ) else {
             return
         }
         guard checkOutAt > checkInAt else {
@@ -404,6 +408,7 @@ final class AppModel: NSObject, ObservableObject {
     func clearManualCheckOut(for workDate: String) {
         do {
             state = try tracker.setManualCheckOut(nil, for: workDate)
+            statusMessage = nil
             updateNotificationIfNeeded(force: true)
         } catch {
             statusMessage = error.localizedDescription

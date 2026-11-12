@@ -185,41 +185,61 @@ public struct AppState: Codable, Equatable, Sendable {
     }
 
     /// The cached GW week with hand-entered check-outs filling the days GW left open.
-    /// Only an attendance row with no check-out is touched, so a real GW check-out wins.
+    /// Only attendance rows with no check-out are touched, so a real GW check-out wins. A day
+    /// with several open rows (a re-tag with no tag-out) becomes one span from its earliest
+    /// check-in, since one typed check-out cannot close them separately.
     public var effectiveWeeklyAttendanceCache: WeeklyAttendanceCache? {
         guard let cache = weeklyAttendanceCache, !manualCheckOuts.isEmpty else {
             return weeklyAttendanceCache
         }
-        var filledDates = Set<String>()
-        let records = cache.records.map { record -> WeeklyAttendanceRecord in
-            guard record.kind == .attendance,
-                  record.checkOutAt == nil,
-                  let checkInAt = record.checkInAt,
-                  let manual = manualCheckOuts.first(where: { $0.workDate == record.workDate }),
-                  manual.checkOutAt > checkInAt,
-                  filledDates.insert(record.workDate).inserted else {
+        let manualByDate = Dictionary(
+            manualCheckOuts.map { ($0.workDate, $0.checkOutAt) },
+            uniquingKeysWith: { _, latest in latest }
+        )
+        let earliestOpenCheckIn = Dictionary(
+            cache.records.filter(Self.isOpenAttendance).compactMap { record in
+                record.checkInAt.map { (record.workDate, $0) }
+            },
+            uniquingKeysWith: min
+        )
+        var closedDates = Set<String>()
+        let records = cache.records.compactMap { record -> WeeklyAttendanceRecord? in
+            guard Self.isOpenAttendance(record),
+                  let checkOutAt = manualByDate[record.workDate],
+                  let checkInAt = earliestOpenCheckIn[record.workDate],
+                  checkOutAt > checkInAt else {
                 return record
+            }
+            guard closedDates.insert(record.workDate).inserted else {
+                return nil
             }
             return WeeklyAttendanceRecord(
                 workDate: record.workDate,
                 kind: .attendance,
                 checkInAt: checkInAt,
-                checkOutAt: manual.checkOutAt,
-                creditedDuration: record.creditedDuration,
+                checkOutAt: checkOutAt,
                 sourceText: record.sourceText
             )
         }
         return WeeklyAttendanceCache(weekStart: cache.weekStart, fetchedAt: cache.fetchedAt, records: records)
     }
 
-    /// Past days this week that clocked in but never out, one per day, oldest first.
-    /// Today is left out: its check-out simply has not happened yet.
-    public func missingCheckOuts(before workDate: String) -> [WeeklyAttendanceRecord] {
+    /// Days of the cached week before `workDate` that clocked in but never out, one row per day
+    /// carrying its earliest check-in, oldest first. Today is left out: its check-out simply has
+    /// not happened yet. A cache from another week offers nothing, as it cannot move the summary.
+    public func missingCheckOuts(before workDate: String, weekStart: String) -> [WeeklyAttendanceRecord] {
+        guard let cache = effectiveWeeklyAttendanceCache, cache.weekStart == weekStart else {
+            return []
+        }
         var seen = Set<String>()
-        return (effectiveWeeklyAttendanceCache?.records ?? [])
-            .filter { $0.kind == .attendance && $0.workDate < workDate && $0.checkInAt != nil && $0.checkOutAt == nil }
-            .sorted { $0.workDate < $1.workDate }
+        return cache.records
+            .filter { Self.isOpenAttendance($0) && $0.workDate < workDate }
+            .sorted { ($0.workDate, $0.checkInAt ?? .distantPast) < ($1.workDate, $1.checkInAt ?? .distantPast) }
             .filter { seen.insert($0.workDate).inserted }
+    }
+
+    private static func isOpenAttendance(_ record: WeeklyAttendanceRecord) -> Bool {
+        record.kind == .attendance && record.checkInAt != nil && record.checkOutAt == nil
     }
 
     /// Manual entries merged with whatever holidays the cached GW week reported.
