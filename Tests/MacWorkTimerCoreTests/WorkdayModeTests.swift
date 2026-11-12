@@ -22,6 +22,19 @@ final class WorkdayModeTests: XCTestCase {
         XCTAssertEqual(WorkdayMode.afternoonHalfDay.workDuration, 4 * 60 * 60)
     }
 
+    func testQuarterDayOwesSixWorkingHours() throws {
+        XCTAssertEqual(WorkdayMode.quarterDay.workDuration, 6 * 60 * 60)
+        XCTAssertEqual(WorkdayMode.quarterDay.title, "반반차")
+
+        // 09:00 start: 6h of work plus the lunch hour it runs through ends at 16:00.
+        let morning = try session(startingAt: 9, mode: .quarterDay)
+        XCTAssertEqual(morning.targetAt, morning.workStartAt.addingTimeInterval(7 * 60 * 60))
+
+        // Morning 반반차 taken, 11:00 start: still spans lunch, ends at 18:00.
+        let late = try session(startingAt: 11, mode: .quarterDay)
+        XCTAssertEqual(late.targetAt, late.workStartAt.addingTimeInterval(7 * 60 * 60))
+    }
+
     func testMorningStartStillSpansTheLunchHour() throws {
         // 8h of work plus the lunch it runs through: the long-standing 9h wall-clock day.
         let session = try session(startingAt: 9)

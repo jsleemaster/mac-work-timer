@@ -63,8 +63,9 @@ public struct WeeklyWorkBalanceCalculator: Sendable {
             completedDuration += creditedDuration(forDayRecords: dailyRecords)
         }
 
+        var todayCreditedLeave: TimeInterval = 0
         if !effectiveHolidays.isHoliday(todaySession.workDate) {
-            let todayCreditedLeave = grouped[todaySession.workDate, default: []].reduce(0) { total, record in
+            todayCreditedLeave = grouped[todaySession.workDate, default: []].reduce(0) { total, record in
                 guard record.kind == .creditedLeave else {
                     return total
                 }
@@ -90,7 +91,16 @@ public struct WeeklyWorkBalanceCalculator: Sendable {
             // Spend the surplus as work, not as wall-clock. Subtracting the balance from the
             // target directly would keep charging the lunch hour to a day that now finishes
             // before lunch even starts, making the readout up to an hour too late.
-            let workLeftToday = max(0, todaySession.workdayMode.workDuration - balance)
+            //
+            // Today's leave reaches us twice: as the groupware credit already folded into
+            // `balance`, and as the menu's shorter workday. Both describe the same leave, so
+            // the day owes the menu's work plus the credit back, capped at a full day -
+            // the larger of the two leaves counted once, never both.
+            let owedBeforeBalance = min(
+                Self.dailyTargetDuration,
+                todaySession.workdayMode.workDuration + todayCreditedLeave
+            )
+            let workLeftToday = max(0, owedBeforeBalance - balance)
             allFlexUsedTargetAt = max(
                 lunch.endOfWork(startingAt: todaySession.workStartAt, creditedWork: workLeftToday),
                 todaySession.workStartAt

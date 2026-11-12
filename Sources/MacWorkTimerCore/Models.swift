@@ -4,6 +4,9 @@ public enum WorkdayMode: String, Codable, CaseIterable, Equatable, Hashable, Sen
     case fullDay
     case morningHalfDay
     case afternoonHalfDay
+    /// 반반차: two hours of leave, six owed. Morning or afternoon needs no separate case —
+    /// lunch is charged from the actual start time, not from which half was taken.
+    case quarterDay
 
     /// Work the day owes, lunch excluded. The wall-clock span is longer whenever the shift
     /// actually runs through the lunch window, which `LunchBreak` decides per session rather
@@ -14,6 +17,8 @@ public enum WorkdayMode: String, Codable, CaseIterable, Equatable, Hashable, Sen
             return 8 * 60 * 60
         case .morningHalfDay, .afternoonHalfDay:
             return 4 * 60 * 60
+        case .quarterDay:
+            return 6 * 60 * 60
         }
     }
 
@@ -25,6 +30,8 @@ public enum WorkdayMode: String, Codable, CaseIterable, Equatable, Hashable, Sen
             return "오전 반차"
         case .afternoonHalfDay:
             return "오후 반차"
+        case .quarterDay:
+            return "반반차"
         }
     }
 }
